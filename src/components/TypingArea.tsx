@@ -11,6 +11,7 @@ interface Props {
   playerId: string;
   roomState: RoomState | null;
   onBackToMenu: () => void;
+  onBlockChange?: (blockIdx: number) => void;
 }
 
 
@@ -29,7 +30,7 @@ const LineItem: React.FC<any> = ({
   const isActiveLine = lineIdx === currentLineIdx;
 
   return (
-    <div className={`py-2 px-10 transition-all duration-300 rounded-none ${isActiveLine ? 'bg-white shadow-[0_4px_30px_rgba(255,133,161,0.2)] relative z-10 scale-[1.01]' : ''}`}>
+    <div className={`py-1 px-4 transition-all duration-300 rounded-none ${isActiveLine ? 'bg-white shadow-[0_4px_30px_rgba(255,133,161,0.2)] relative z-10 scale-[1.01]' : ''}`}>
       <div className='text-4xl font-black leading-tight flex flex-wrap gap-x-4 tracking-tighter'>
         {line.chunks.map((chunk: any, i: number) => {
           const isChunkActive = isActiveLine && i === currentChunkIdx;
@@ -40,20 +41,22 @@ const LineItem: React.FC<any> = ({
 
           let matchedTyping = '';
           if (isOpponentActiveChunk) {
-            matchedTyping = (currentTyping && chunk.text.startsWith(currentTyping)) ? currentTyping : '';
+            matchedTyping = (currentTyping && chunk.text.toUpperCase().replace(/ /g, '　').startsWith(currentTyping.toUpperCase())) ? currentTyping : '';
           } else if (isChunkActive && isEngineReady) {
             matchedTyping = keygraph.seq_done() || '';
           }
+
+          const displayText = chunk.text.toUpperCase().replace(/ /g, '　');
 
           return (
             <span key={i} className="relative transition-all duration-300" style={{ color: playerColor }}>
               {isChunkActive || isOpponentActiveChunk ? (
                 <>
-                  <span className="opacity-20 inline-block">{matchedTyping}</span>
-                  <span className="opacity-100 drop-shadow-sm">{chunk.text.slice(matchedTyping.length)}</span>
+                  <span className="opacity-20 inline-block">{displayText.slice(0, matchedTyping.length)}</span>
+                  <span className="opacity-100 drop-shadow-sm">{displayText.slice(matchedTyping.length)}</span>
                 </>
               ) : (
-                <span className={isChunkFinished ? 'opacity-30' : 'opacity-100'}>{chunk.text}</span>
+                <span className={isChunkFinished ? 'opacity-30' : 'opacity-100'}>{displayText}</span>
               )}
             </span>
           );
@@ -63,7 +66,7 @@ const LineItem: React.FC<any> = ({
   );
 };
 
-export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomState, onBackToMenu }) => {
+export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomState, onBackToMenu, onBlockChange }) => {
   const [currentBlockIdx, setCurrentBlockIdx] = useState(0);
   const [currentLineIdx, setCurrentLineIdx] = useState(0);
   const [currentChunkIdx, setCurrentChunkIdx] = useState(0);
@@ -181,6 +184,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const isMe = currentLine ? isMine(currentLine.absLineIdx) : false;
   const activeLinePlayerId = currentLine ? getAssignedPlayerId(currentLine.absLineIdx, playerIds) : "";
   const isSomeoneElseActive = activeLinePlayerId !== "" && activeLinePlayerId !== playerId;
+
+  useEffect(() => {
+    onBlockChange?.(currentBlockIdx);
+  }, [currentBlockIdx, onBlockChange]);
 
   useEffect(() => {
     const int = setInterval(() => {
@@ -387,7 +394,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const scoreText = (roomState?.sharedScore || 0).toString().padStart(6, '0');
 
   return (
-    <div className='flex flex-col items-center w-full max-w-5xl mx-auto pb-12 px-2'>
+    <div className='flex flex-col items-center w-full max-w-none mx-auto pb-12 px-0'>
       {/* プレイ画面全体をくくる枠 (角を丸くせず、paddingを0に) */}
       <div className="w-full border-4 border-white rounded-none bg-white/5 backdrop-blur-sm p-0 flex flex-col gap-0 shadow-2xl overflow-hidden">
 
@@ -399,7 +406,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         {!isGameOver && (
           <div className="w-full flex flex-col gap-0">
             {/* 2. 歌詞モニターエリア */}
-            <div className="w-full p-10 min-h-[240px] flex flex-col justify-center relative overflow-hidden bubble-bg bg-white border-y-4 border-rose-200">
+            <div className="w-full p-4 min-h-[200px] flex flex-col justify-center relative overflow-hidden bubble-bg bg-white border-y-4 border-rose-200">
               {canSkip && (
                 <div className="absolute top-3 right-5 animate-bounce z-20">
                   <div className="px-3 py-1 bg-rose-400 text-white text-[10px] font-black rounded-full shadow-md flex items-center gap-2">

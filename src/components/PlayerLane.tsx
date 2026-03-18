@@ -23,9 +23,9 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto relative">
+    <div className="w-full relative">
       {/* 舞台エリア (かわいい系) */}
-      <div className="relative w-full aspect-[21/5] overflow-hidden stage-floor-cute group bubble-bg rounded-none">
+      <div className="relative w-full aspect-[21/7] overflow-hidden stage-floor-cute group bubble-bg rounded-none border-x-4 border-white shadow-inner">
         {/* 装飾的な雲やキラキラなどを背景に追加可能 */}
         <div className="absolute top-4 left-10 w-24 h-8 bg-white/40 rounded-full blur-xl animate-pulse" />
         <div className="absolute bottom-10 right-20 w-32 h-12 bg-white/30 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '1s' }} />
@@ -35,7 +35,7 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
           {players.map(p => (
             <div key={p.id} className="flex-1 flex flex-col items-center transition-all duration-500 hover:scale-110 relative">
               {/* キャラクター（立ち絵風アバター） */}
-              <div className="relative h-48 w-full flex flex-col items-center justify-end">
+              <div className="relative h-40 w-full flex flex-col items-center justify-end">
                 {/* ホスト/YOUタグ (キャラクターの頭上に配置) */}
                 <div className="absolute -top-4 right-1/2 translate-x-12 flex flex-col gap-1 items-end z-30">
                   {p.id === hostId && (
