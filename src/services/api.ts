@@ -294,8 +294,7 @@ function buildDisplaySets(allLines: DisplayLine[], setMaxLines = 4): DisplaySet[
 // ============================================
 
 export const fetchMapData = async (mapId: string | number): Promise<ParseResult> => {
-  // 1. キャッシュをチェック (開発・修正中のため一時的に無効化)
-  /*
+  // 1. キャッシュをチェック
   try {
     const cached = await getCachedMapData(mapId);
     if (cached) {
@@ -305,7 +304,6 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
   } catch (err) {
     console.warn('Failed to fetch from cache:', err);
   }
-  */
 
   const response = await fetch(`https://ytyping.net/api/maps/${mapId}/json`);
   if (!response.ok) {
