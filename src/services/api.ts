@@ -280,10 +280,18 @@ function buildDisplaySets(allLines: DisplayLine[], setMaxLines = 4): DisplaySet[
   let currentSet: DisplaySet | null = null;
 
   for (const group of groups) {
+    // 現在のセットの最後の行の開始時間を確認
+    const lastLineInSet = currentSet && currentSet.lines.length > 0 
+      ? currentSet.lines[currentSet.lines.length - 1] 
+      : null;
+    
+    // 6秒以上離れているかチェック (isTooFar)
+    const isTooFar = lastLineInSet && (group[0].timeMs - lastLineInSet.timeMs >= 6000);
+
     // このグループ（1つの元歌詞行）を現在のセットに追加すると overflow するか？
     const willOverflow = currentSet && (currentSet.lines.length + group.length > setMaxLines);
 
-    if (!currentSet || willOverflow) {
+    if (!currentSet || willOverflow || isTooFar) {
       currentSet = { timeMs: group[0].timeMs, lines: [] };
       sets.push(currentSet);
     }
