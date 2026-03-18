@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# debug・開発用JSONファイル（srcの中）
+src/debug_map_meta_utf8.json
+src/debug_map_meta.json
+src/map1_content.txt
+src/map1_full.json
+src/map1_inspect.json
+src/map1_meta_full.json
+src/map1_meta.json
+src/map1_raw.bin
+src/map1.json
+
+# logs
+src/tsc_error_final.log
+src/tsc_error.log
+
+# env
+.env
+.env.local
+.env.*.local
+
+# editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
