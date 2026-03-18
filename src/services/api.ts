@@ -321,9 +321,10 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
     const metaResponse = await fetch(`https://ytyping.net/api/maps/${mapId}`);
     if (metaResponse.ok) {
       const metaData = await metaResponse.json();
-      videoId = metaData.media?.videoId || metaData.media?.youtube_id || metaData.media?.video_id;
-      title = metaData.name || metaData.title;
-      artist = metaData.artist?.name || metaData.creator?.name || metaData.artist;
+      const info = metaData.info || metaData.map || metaData;
+      videoId = metaData.media?.videoId || metaData.media?.youtube_id || metaData.media?.video_id || info.media?.videoId || info.media?.youtube_id || info.media?.video_id || info.video_id;
+      title = info.name || info.title || info.map_name || info.music?.title;
+      artist = info.artist?.name || info.creator?.name || (typeof info.artist === 'string' ? info.artist : undefined) || info.artistName || info.music?.artist || info.artist;
     }
   } catch (err) {
     console.warn('Failed to fetch map metadata:', err);
@@ -352,7 +353,7 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
     lines: parsedLines, 
     displaySets, 
     videoId,
-    title: typeof title === 'string' ? title : undefined,
-    artist: typeof artist === 'string' ? artist : undefined
+    title: title ? String(title) : undefined,
+    artist: artist ? String(artist) : undefined
   };
 };

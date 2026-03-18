@@ -29,12 +29,14 @@ const LineItem: React.FC<any> = ({
   const isActiveLine = lineIdx === currentLineIdx;
 
   return (
-    <div className={`py-1 px-8 transition-all duration-500 rounded-none ${isActiveLine ? 'bg-white shadow-[0_4px_20px_rgba(255,133,161,0.15)] relative z-10 scale-[1.05]' : ''}`}>
-      <div className='text-2xl font-black leading-tight flex flex-wrap gap-x-3 tracking-tighter'>
+    <div className={`py-2 px-10 transition-all duration-300 rounded-none ${isActiveLine ? 'bg-white shadow-[0_4px_30px_rgba(255,133,161,0.2)] relative z-10 scale-[1.01]' : ''}`}>
+      <div className='text-3xl font-black leading-tight flex flex-wrap gap-x-4 tracking-tighter'>
         {line.chunks.map((chunk: any, i: number) => {
           const isChunkActive = isActiveLine && i === currentChunkIdx;
           const isOpponentActiveChunk = isSomeoneElseActive && i === (opponentChunkIdx ?? 0);
-          const isChunkFinished = isDone || (isActiveLine && i < currentChunkIdx);
+          
+          // 修正：自分の場所に関わらず、担当者が打ち終わったチャンクを常にグレーアウトする
+          const isChunkFinished = isDone || (i < (isActiveLine ? currentChunkIdx : 0)) || (isSomeoneElseActive && i < (opponentChunkIdx ?? 0));
           
           let matchedTyping = '';
           if (isOpponentActiveChunk) {
@@ -48,7 +50,7 @@ const LineItem: React.FC<any> = ({
               {isChunkActive || isOpponentActiveChunk ? (
                 <>
                   <span className="opacity-20 inline-block">{matchedTyping}</span>
-                  <span className="opacity-100">{chunk.text.slice(matchedTyping.length)}</span>
+                  <span className="opacity-100 drop-shadow-sm">{chunk.text.slice(matchedTyping.length)}</span>
                 </>
               ) : (
                 <span className={isChunkFinished ? 'opacity-30' : 'opacity-100'}>{chunk.text}</span>
@@ -185,6 +187,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const currentSet = mapData.displaySets?.[currentBlockIdx];
   const currentLine = useMemo(() => currentSet?.lines?.[currentLineIdx], [currentSet, currentLineIdx]);
   const isMe = currentLine ? isMine(currentLine.absLineIdx) : false;
+  const activeLinePlayerId = currentLine ? getAssignedPlayerId(currentLine.absLineIdx, playerIds) : "";
+  const isSomeoneElseActive = activeLinePlayerId !== "" && activeLinePlayerId !== playerId;
 
   useEffect(() => {
     const int = setInterval(() => {
@@ -402,8 +406,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
         {!isGameOver && (
           <div className="w-full flex flex-col gap-0">
-            {/* 2. 歌詞モニターエリア (角を丸くせず枠に密着) */}
-            <div className="w-full p-6 min-h-[200px] flex flex-col justify-center relative overflow-hidden bubble-bg bg-white border-b-4 border-white/10">
+            {/* 2. 歌詞モニターエリア */}
+            <div className="w-full p-10 min-h-[240px] flex flex-col justify-center relative overflow-hidden bubble-bg bg-white border-b-4 border-white/10">
                {canSkip && (
                  <div className="absolute top-3 right-5 animate-bounce z-20">
                    <div className="px-3 py-1 bg-rose-400 text-white text-[10px] font-black rounded-full shadow-md flex items-center gap-2">
@@ -428,29 +432,55 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
               </div>
             </div>
 
-            {/* 3. 入力インジケーターバー (角を丸くせず、横幅いっぱいに) */}
-            <div className="w-full h-14 bg-rose-400 flex items-center justify-between px-10 relative overflow-hidden border-b-4 border-white/10">
-              <div className="flex flex-col items-start leading-none">
-                <span className="text-[9px] font-black text-rose-100 uppercase italic">Target</span>
-                <span className="text-[10px] font-black text-white italic">{isMe ? 'TYPE!' : 'WAIT'}</span>
-              </div>
+            {/* 3. 入力インジケーターバー */}
+            <div className="w-full bg-rose-400 flex flex-col relative overflow-hidden border-b-4 border-white/10">
+              
+              {/* ライン進捗バー (タイマー) */}
+              {isStarted && !isGameOver && (
+                <div className="w-full h-4 bg-rose-900/20">
+                  <div 
+                    className="h-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)] transition-all duration-100"
+                    style={{ 
+                      width: `${(() => {
+                        const line = currentSet.lines[0];
+                        const nextSet = mapData.displaySets[currentBlockIdx + 1];
+                        const end = nextSet ? nextSet.timeMs : (videoDuration * 1000);
+                        const progress = ((currentTime * 1000) - line.timeMs) / (Math.max(1, end - line.timeMs));
+                        return Math.max(0, Math.min(100, progress * 100));
+                      })()}%` 
+                    }}
+                  />
+                </div>
+              )}
 
-              <div className="flex-1 flex items-center justify-center">
-                {isEngineReady && isMe ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-3xl font-black italic tracking-wider text-white drop-shadow-md">
-                      <span className="opacity-30">{(keygraph.key_done() || '').toUpperCase()}</span>
-                      <span>{(keygraph.key_candidate() || '').toUpperCase()}</span>
-                    </span>
-                  </div>
-                ) : (
-                  <div className="text-rose-200 font-bold uppercase tracking-[0.2em] text-[9px] animate-pulse">Waiting for Turn...</div>
-                )}
-              </div>
+              <div className="h-32 flex items-center justify-between px-10">
+                <div className="flex flex-col items-start leading-none mt-1">
+                  <span className="text-[10px] font-black text-rose-100 uppercase italic">Target</span>
+                  <span className="text-xs font-black text-white italic">{isMe ? 'TYPE!' : 'WAIT'}</span>
+                </div>
 
-              <div className="flex flex-col items-end leading-none">
-                <span className="text-[9px] font-black text-rose-100 uppercase italic text-right">Combo</span>
-                <div key={comboAnimKey} className="text-xl font-black italic text-white combo-pop leading-none">{roomState?.sharedCombo || 0}</div>
+                <div className="flex-1 flex flex-col items-center justify-center -mt-1">
+                  {isEngineReady && isMe ? (
+                    <>
+                      <div className="text-7xl font-black text-white drop-shadow-md mb-1 leading-none">
+                        {currentLine.chunks[currentChunkIdx].text}
+                      </div>
+                      <div className="text-5xl font-black italic tracking-wider text-rose-100 drop-shadow-lg leading-none">
+                        <span className="opacity-30">{(keygraph.key_done() || '').toUpperCase()}</span>
+                        <span>{(keygraph.key_candidate() || '').toUpperCase()}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-white/40 font-black uppercase tracking-[0.3em] text-[10px] animate-pulse">
+                      {isSomeoneElseActive ? 'Opponent Activity...' : 'Waiting for Rhythm...'}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-col items-end leading-none mt-1">
+                  <span className="text-[10px] font-black text-rose-100 uppercase italic text-right">Combo</span>
+                  <div key={comboAnimKey} className="text-4xl font-black italic text-white combo-pop leading-none">{roomState?.sharedCombo || 0}</div>
+                </div>
               </div>
             </div>
 
@@ -470,19 +500,19 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
               {/* 右パネル: 曲情報/メニュー */}
               <div className="flex-1 p-6 flex flex-col justify-between bubble-bg bg-white">
                  <div className="flex flex-col">
-                   <span className="text-[9px] font-black text-rose-300 uppercase italic">Playing</span>
-                   <div className="text-xs font-black text-zinc-700 truncate mt-0.5">{mapData.title || 'Untitled'}</div>
-                   <div className="text-[9px] font-bold text-zinc-400 truncate">{mapData.artist || 'Artist'}</div>
+                   <span className="text-[10px] font-black text-rose-300 uppercase italic">Playing</span>
+                   <div className="text-base font-black text-zinc-700 truncate mt-0.5">{mapData.title || 'Unknown Stage'}</div>
+                   <div className="text-[10px] font-bold text-zinc-400 truncate">{mapData.artist || 'Unknown Artist'}</div>
                  </div>
                  
-                 <div className="flex gap-2 mt-2">
+                 <div className="flex gap-2 mt-4">
                     <button 
                       onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) {} onBackToMenu(); }}
-                      className="flex-1 py-1 bg-rose-400 text-white text-[9px] font-black rounded-full hover:bg-rose-500 shadow-sm"
+                      className="flex-1 py-1.5 bg-rose-400 text-white text-[10px] font-black rounded-none hover:bg-rose-500 shadow-sm transition-colors"
                     >
                       MENU
                     </button>
-                    <button className="flex-1 py-1 bg-white border border-zinc-100 text-[9px] text-zinc-400 font-black rounded-full">HELP</button>
+                    <button className="flex-1 py-1.5 bg-white border border-zinc-100 text-[10px] text-zinc-400 font-black rounded-none hover:bg-zinc-50 transition-colors">HELP</button>
                  </div>
               </div>
             </div>
@@ -499,20 +529,20 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       </div>
 
       {isGameOver && (
-        <div className='flex flex-col items-center gap-6 py-16 w-full kawaii-card bubble-bg relative overflow-hidden text-center'>
-          <div className='absolute -top-10 -left-10 w-40 h-40 bg-rose-100 rounded-full blur-3xl opacity-50' />
-          <div className='absolute -bottom-10 -right-10 w-40 h-40 bg-purple-100 rounded-full blur-3xl opacity-50' />
+        <div className='flex flex-col items-center gap-12 py-24 w-full bg-white border-4 border-white shadow-2xl relative overflow-hidden text-center rounded-none bubble-bg mt-12'>
+          <div className='absolute -top-10 -left-10 w-40 h-40 bg-rose-100 blur-3xl opacity-50' />
+          <div className='absolute -bottom-10 -right-10 w-40 h-40 bg-purple-100 blur-3xl opacity-50' />
           
-          <div className='text-7xl font-black text-rose-400 italic tracking-tighter drop-shadow-sm line-height-1'>FINISH!</div>
-          <div className='flex flex-col gap-1'>
-            <div className='text-3xl font-black text-zinc-700'>SCORE: <span className='text-rose-400'>{scoreText}</span></div>
-            <div className='text-base font-bold text-zinc-400 uppercase tracking-[0.2em]'>Max Combo: {roomState?.maxSharedCombo || 0}</div>
+          <div className='text-8xl font-black text-rose-400 italic tracking-tighter drop-shadow-lg scale-y-110 leading-none'>FINISH!</div>
+          <div className='flex flex-col gap-4'>
+            <div className='text-5xl font-black text-zinc-700 uppercase tracking-tighter'>STAGE SCORE: <span className='text-rose-400'>{scoreText}</span></div>
+            <div className='text-xl font-bold text-zinc-300 uppercase tracking-[0.5em]'>Grand Combo: {roomState?.maxSharedCombo || 0}</div>
           </div>
           <button 
             onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) {} onBackToMenu(); }} 
-            className='kawaii-btn px-16 py-4 text-base mt-8'
+            className='bg-rose-500 hover:bg-rose-600 text-white font-black text-xl px-24 py-6 rounded-none shadow-2xl shadow-rose-200 transition-all hover:scale-110 active:scale-95'
           >
-            BACK TO LOBBY ♥
+            RETURN TO STAGE SELECTION ♥
           </button>
         </div>
       )}
