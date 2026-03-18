@@ -16,8 +16,8 @@
 
 body {
   margin: 0;
-  background: linear-gradient(135deg, #fff5f7 0%, #fef9fb 50%, #f5f3ff 100%);
-  color: #5d4037;
+  background: linear-gradient(135deg, #fff5f7 0%, #fff 50%, #f6f5ff 100%);
+  color: #374151; /* zinc-700 */
   font-family: 'Zen Maru Gothic', sans-serif;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;

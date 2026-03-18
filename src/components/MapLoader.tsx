@@ -27,12 +27,11 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
   };
 
   return (
-    <div className="glass p-8 rounded-3xl shadow-2xl w-full flex flex-col gap-6 relative overflow-hidden group">
-      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-3xl rounded-full -mr-16 -mt-16 group-hover:bg-blue-500/20 transition-all duration-700"></div>
+    <div className="bg-white border-4 border-white shadow-[0_10px_30px_rgba(255,133,161,0.05)] p-8 rounded-none w-full flex flex-col gap-6 relative overflow-hidden group bubble-bg">
       
       <div className="flex flex-col gap-1">
-        <h3 className="text-xl font-black font-premium text-white">Select Your Stage</h3>
-        <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">Enter Map ID to begin fetching lyrics</p>
+        <h3 className="text-xl font-black font-premium text-zinc-700 italic uppercase tracking-tighter">Select Your Stage</h3>
+        <p className="text-[10px] text-rose-300 font-black uppercase tracking-widest italic">Enter Map ID to begin fetching lyrics</p>
       </div>
 
       <div className="flex gap-3">
@@ -42,13 +41,13 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
             placeholder="Stage ID (e.g. 1)"
             value={mapId}
             onChange={(e) => setMapId(e.target.value)}
-            className="w-full px-5 py-4 rounded-xl bg-white/5 border border-white/10 focus:outline-none focus:border-blue-500/50 focus:bg-white/10 transition-all font-bold placeholder:text-white/20 text-white"
+            className="w-full px-5 py-4 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black placeholder:text-zinc-300 text-zinc-700 shadow-inner"
           />
         </div>
         <button
           onClick={handleLoad}
           disabled={loading}
-          className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-xl shadow-lg transition-all hover:scale-[1.05] active:scale-[0.95] disabled:opacity-50 disabled:scale-100 flex items-center gap-2 group/btn font-premium"
+          className="px-8 py-4 bg-rose-400 hover:bg-rose-500 text-white font-black rounded-none shadow-lg transition-all active:scale-[0.95] disabled:opacity-50 disabled:scale-100 flex items-center gap-2 group/btn font-premium"
         >
           {loading ? (
             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
