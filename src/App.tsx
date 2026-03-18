@@ -97,7 +97,7 @@ function App() {
             const r = rooms[rid];
             const players = r.players || {};
             const pIds = Object.keys(players);
-            
+
             // 0人の部屋を削除
             if (pIds.length === 0) {
               deleteRoomIfEmpty(rid);
@@ -119,10 +119,7 @@ function App() {
     }
   }, [inRoom]);
 
-  const activeRoomsCount = allRooms ? Object.keys(allRooms).filter(rid => {
-    const players = allRooms[rid].players;
-    return players && Object.keys(players).length > 0;
-  }).length : 0;
+
 
   // ハートビート (15秒ごとに生存確認を更新)
   useEffect(() => {
@@ -136,7 +133,7 @@ function App() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-[#fff5f7] via-white to-[#f5f3ff] text-zinc-800 p-6 overflow-x-hidden selection:bg-rose-200">
-      
+
       <header className="flex flex-col items-center mb-10 relative z-10">
         <h1 className="text-6xl font-black mb-1 font-premium bg-clip-text text-transparent bg-gradient-to-br from-rose-400 via-rose-500 to-purple-500 tracking-tighter drop-shadow-sm">
           通うタイピング
@@ -152,17 +149,17 @@ function App() {
         <div className="bg-white border-4 border-white shadow-[0_20px_50px_rgba(255,133,161,0.1)] p-10 rounded-none w-full max-w-md relative z-10 overflow-hidden bubble-bg">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-rose-400 to-purple-400"></div>
 
-          <div className="mb-8">
-            <h2 className="text-2xl font-black font-premium mb-1 text-zinc-700">Welcome Back</h2>
-            <p className="text-zinc-400 text-sm font-bold">Please log in to your stage.</p>
+          <div className="mb-8 text-center">
+            <h1 className="text-4xl font-black font-premium text-zinc-700 italic uppercase tracking-tighter mb-2">部屋選択</h1>
+            <p className="text-xs text-rose-300 font-black uppercase tracking-[0.2em] mb-8">部屋名を入力して入室</p>
           </div>
 
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] uppercase font-black tracking-widest text-rose-400 ml-0.5 italic">Room Identity</label>
+              <label className="text-[10px] uppercase font-black tracking-widest text-rose-400 ml-0.5 italic">ルーム設定</label>
               <input
                 type="text"
-                placeholder="Ex: 1234"
+                placeholder="ルームID (例: a)"
                 value={roomId}
                 onChange={e => setRoomId(e.target.value)}
                 className="px-5 py-4 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black text-zinc-700 placeholder:text-zinc-300 shadow-inner"
@@ -170,10 +167,10 @@ function App() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] uppercase font-black tracking-widest text-rose-400 ml-0.5 italic">Stage Name</label>
+              <label className="text-[10px] uppercase font-black tracking-widest text-rose-400 ml-0.5 italic">あなたの名前</label>
               <input
                 type="text"
-                placeholder="Ex: Player One"
+                placeholder="プレイヤー名"
                 value={playerName}
                 onChange={e => setPlayerName(e.target.value)}
                 className="px-5 py-4 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black text-zinc-700 placeholder:text-zinc-300 shadow-inner"
@@ -182,45 +179,44 @@ function App() {
 
             <button
               onClick={handleJoin}
-              className="group relative bg-rose-400 text-white py-4 rounded-none font-black text-lg transition-all hover:bg-rose-500 active:scale-[0.98] shadow-lg shadow-rose-200 mt-2"
+              className="w-full py-5 bg-rose-400 hover:bg-rose-500 text-white font-black rounded-none shadow-xl transition-all active:scale-[0.98] group font-premium mt-2"
             >
-              <span className="relative z-10 flex items-center justify-center gap-2 uppercase tracking-tighter">
-                Enter the Show
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-              </span>
+              入室
             </button>
           </div>
 
-          {activeRoomsCount > 0 && (
-            <div className="mt-10">
-              <h3 className="text-[10px] uppercase font-black tracking-[0.3em] text-rose-300 mb-4 text-center">Live Stages</h3>
+          {/* 稼働中ステージリスト */}
+          {Object.keys(allRooms || {}).length > 0 && (
+            <div className="mt-12 pt-8 border-t-2 border-zinc-50">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></div>
+                <h3 className="text-sm font-black text-rose-300 uppercase tracking-widest italic">部屋一覧</h3>
+              </div>
               <div className="grid grid-cols-1 gap-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                {Object.entries(allRooms || {})
-                  .filter(([_, state]) => state.players && Object.keys(state.players).length > 0)
-                  .map(([rid, state]) => {
-                    const pCount = Object.keys(state.players || {}).length;
-                    return (
-                      <button
-                        key={rid}
-                        onClick={() => { setRoomId(rid); }}
-                        className="group flex items-center justify-between p-4 bg-zinc-50 border-2 border-zinc-100 hover:border-rose-200 transition-all text-left active:scale-[0.98]"
-                      >
-                        <div className="flex flex-col">
-                          <span className="text-xs font-black text-zinc-400 italic mb-0.5">Stage ID</span>
-                          <span className="font-black text-zinc-700 tracking-tighter"># {rid}</span>
+                {Object.keys(allRooms || {}).map(rid => {
+                  const r = allRooms![rid];
+                  const pCount = Object.keys(r.players || {}).length;
+                  if (pCount === 0) return null;
+                  return (
+                    <button
+                      key={rid}
+                      onClick={() => { setRoomId(rid); }}
+                      className="group flex items-center justify-between p-4 bg-zinc-50 border-2 border-zinc-100 hover:border-rose-200 transition-all text-left active:scale-[0.98]"
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-xs font-black text-zinc-400 italic mb-0.5">部屋名</span>
+                        <span className="font-black text-zinc-700 tracking-tighter"># {rid}</span>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className="text-[10px] font-black text-rose-300 uppercase italic mb-0.5">プレイヤー</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                          <span className="font-black text-sm text-zinc-600 tabular-nums">{pCount}P</span>
                         </div>
-                        <div className="flex flex-col items-end">
-                          <span className="text-[10px] font-black text-rose-300 uppercase italic mb-0.5">Audience</span>
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                            <span className="font-black text-sm text-zinc-600 tabular-nums">{pCount}P</span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -234,7 +230,7 @@ function App() {
             </div>
             <div className="w-[1px] h-4 bg-zinc-100"></div>
             <div className="flex items-center gap-2">
-              <span className="text-[9px] font-black text-purple-300 uppercase tracking-widest italic">Artist</span>
+              <span className="text-[9px] font-black text-purple-300 uppercase tracking-widest italic">Player</span>
               <span className="font-black text-sm text-zinc-600 uppercase italic">{playerName}</span>
             </div>
           </div>
@@ -264,7 +260,7 @@ function App() {
       )}
 
       <footer className="mt-12 opacity-30 text-[10px] font-black uppercase tracking-[0.5em] pointer-events-none relative z-10">
-        &copy; 2026 Kayo Typing Theater Project
+        歌謡タイピング
       </footer>
     </div>
   );

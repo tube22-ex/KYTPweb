@@ -10,7 +10,7 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-   const handleLoad = async () => {
+  const handleLoad = async () => {
     let targetId = mapId.trim();
     // ytyping URL (https://ytyping.net/type/1) から ID を抽出
     const match = targetId.match(/\/type\/(\d+)$/);
@@ -36,17 +36,17 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
 
   return (
     <div className="bg-white border-4 border-white shadow-[0_10px_30px_rgba(255,133,161,0.05)] p-8 rounded-none w-full flex flex-col gap-6 relative overflow-hidden group bubble-bg">
-      
+
       <div className="flex flex-col gap-1">
-        <h3 className="text-xl font-black font-premium text-zinc-700 italic uppercase tracking-tighter">Select Your Stage</h3>
-        <p className="text-[10px] text-rose-300 font-black uppercase tracking-widest italic">Enter Map ID to begin fetching lyrics</p>
+        <h3 className="text-xl font-black font-premium text-zinc-700 italic uppercase tracking-tighter">譜面ID</h3>
+        <p className="text-[10px] text-rose-300 font-black uppercase tracking-widest italic">譜面IDを入力して歌詞を読み込みます</p>
       </div>
 
       <div className="flex gap-3">
         <div className="flex-1 relative">
           <input
             type="text"
-            placeholder="Stage ID (e.g. 1)"
+            placeholder="ステージID (例: 1)"
             value={mapId}
             onChange={(e) => setMapId(e.target.value)}
             className="w-full px-5 py-4 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black placeholder:text-zinc-300 text-zinc-700 shadow-inner"
@@ -61,7 +61,7 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
           ) : (
             <>
-              LOAD 
+              読み込む
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover/btn:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
