@@ -39,6 +39,7 @@ export interface Chunk {
 export interface DisplayLine {
   timeMs: number;
   chunks: Chunk[];
+  absLineIdx: number;
 }
 
 export interface DisplaySet {
@@ -78,7 +79,7 @@ async function splitYomi(
   lyrics: string,
   word: string,
   MIN = 4,
-  MAX = 10
+  MAX = 15
 ): Promise<string[]> {
   if (!word.trim()) return [];
   if (/^[a-zA-Z0-9 ]+$/.test(word)) return word.split(' ').filter(p => p);
@@ -170,9 +171,10 @@ function toChunks(jsonLines: ParsedLine[]): Chunk[] {
 }
 
 // ④ Chunk配列 → DisplayLine配列
-function buildDisplayLines(chunks: Chunk[], lineMaxChars = 12): DisplayLine[] {
+function buildDisplayLines(chunks: Chunk[], lineMaxChars = 15): DisplayLine[] {
   const lines: DisplayLine[] = [];
   let current: DisplayLine | null = null;
+  let absCounter = 0;
 
   for (const chunk of chunks) {
     const currentLen = current?.chunks.reduce((s, c) => s + c.text.length, 0) ?? 0;
@@ -184,7 +186,7 @@ function buildDisplayLines(chunks: Chunk[], lineMaxChars = 12): DisplayLine[] {
     const shouldBreak = wouldOverflow || (chunk.isLineHead && current !== null && current.chunks.length > 0);
 
     if (!current || shouldBreak) {
-      current = { timeMs: chunk.timeMs, chunks: [] };
+      current = { timeMs: chunk.timeMs, chunks: [], absLineIdx: absCounter++ };
       lines.push(current);
     }
     current.chunks.push(chunk);
@@ -201,19 +203,16 @@ function buildDisplaySets(lines: DisplayLine[], setMaxLines = 4): DisplaySet[] {
     const isNewOrigin = line.chunks[0]?.isLineHead === true;
     const isFull = (current?.lines.length ?? 0) >= setMaxLines;
 
-    // 新しいセットを開始する条件：
-    // ① 現在のセットが4行満杯
-    // ② この行の先頭チャンクがisLineHead:true（元行データの先頭）
-    //    かつ現在のセットが1行以上ある
-    const shouldBreak = isFull || (isNewOrigin && current !== null && current.lines.length > 0);
-
-    if (!current || shouldBreak) {
-      // ★絶対ルール：セットの1行目先頭チャンクはisLineHead:trueのみ許可
-      if (!isNewOrigin && current) {
-        // isLineHead:falseなら今のセットに追加 (強引に)
-        current.lines.push(line);
-        continue;
-      }
+    if (!current) {
+      // 最初のセット
+      current = { timeMs: line.timeMs, lines: [] };
+      sets.push(current);
+    } else if (isFull) {
+      // ★4行満杯 → 問答無用で次のセットへ
+      current = { timeMs: line.timeMs, lines: [] };
+      sets.push(current);
+    } else if (isNewOrigin) {
+      // 元行データの先頭チャンク → 新しいセットへ
       current = { timeMs: line.timeMs, lines: [] };
       sets.push(current);
     }

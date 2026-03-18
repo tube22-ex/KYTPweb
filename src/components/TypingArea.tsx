@@ -10,6 +10,7 @@ interface Props {
   roomId: string;
   playerId: string;
   roomState: RoomState | null;
+  onBackToMenu: () => void;
 }
 
 // ============================
@@ -67,7 +68,7 @@ const LineItem: React.FC<any> = ({ line, lineIdx, currentLineIdx, currentChunkId
 // ============================
 // TypingArea メイン
 // ============================
-export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomState }) => {
+export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomState, onBackToMenu }) => {
   const [currentBlockIdx, setCurrentBlockIdx] = useState(0);
   const [currentLineIdx, setCurrentLineIdx] = useState(0);
   const [currentChunkIdx, setCurrentChunkIdx] = useState(0);
@@ -94,7 +95,11 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const myPos = playerIds.indexOf(playerId);
 
   const endTimeMs = useMemo(() => {
-    return mapData.lines.find(l => l.isEnd)?.timeMs;
+    const endLine = mapData.lines.find(l => l.isEnd);
+    if (endLine) return endLine.timeMs;
+    // フォールバック: 最後の歌詞行の時刻 + 3秒
+    const lastLine = mapData.lines[mapData.lines.length - 1];
+    return lastLine ? lastLine.timeMs + 3000 : undefined;
   }, [mapData.lines]);
 
   // =====================
@@ -119,7 +124,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
               getServerTimeOffset().then(off => {
                 const sec = (Date.now() + off - start) / 1000;
                 if (sec > 0) e.target.seekTo(sec, true);
-                e.target.playVideo();
+                if (!isGameOver) e.target.playVideo();
               });
             }
           }
@@ -140,7 +145,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   // =====================
   useEffect(() => {
     const start = roomState?.startTime;
-    if (start) {
+    if (start && !isGameOver) {
       const p = playerRef.current;
       if (p && typeof p.playVideo === 'function') {
         const s = p.getPlayerState();
@@ -152,11 +157,15 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       }
     } else {
       try { if (playerRef.current?.stopVideo) playerRef.current.stopVideo(); } catch (e) { }
-      setCurrentBlockIdx(0); setCurrentLineIdx(0); setCurrentChunkIdx(0); setCombo(0);
+      if (!isGameOver) {
+        setCurrentBlockIdx(0); setCurrentLineIdx(0); setCurrentChunkIdx(0); setCombo(0);
+      }
     }
-  }, [roomState?.startTime]);
+  }, [roomState?.startTime, isGameOver]);
 
-  const isMe = (currentBlockIdx % numPlayers === myPos);
+  const currentSet = mapData.displaySets[currentBlockIdx];
+  const currentLine = currentSet?.lines[currentLineIdx];
+  const isMe = currentLine ? (currentLine.absLineIdx % numPlayers === myPos) : false;
 
   // =====================
   // ブロック進行タイマー (displaySetsベース)
@@ -164,7 +173,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   useEffect(() => {
     const int = setInterval(() => {
       const p = playerRef.current;
-      if (!isStarted) return;
+      if (!isStarted || isGameOver) return;
 
       const start = roomState?.startTime;
 
@@ -251,9 +260,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         setKgTick(t => t + 1);
         // チャンクが終了したら次へ
         if (keygraph.is_finished()) {
-          const currentSet = mapData.displaySets[currentBlockIdx];
-          const currentLine = currentSet.lines[currentLineIdx];
-
           if (currentChunkIdx + 1 < currentLine.chunks.length) {
             // 同じ行の次のチャンクへ
             setCurrentChunkIdx(prev => prev + 1);
@@ -263,9 +269,15 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             setCurrentChunkIdx(0);
           } else {
             // 次のセットへ
-            setCurrentBlockIdx(prev => prev + 1);
-            setCurrentLineIdx(0);
-            setCurrentChunkIdx(0);
+            if (currentBlockIdx + 1 < mapData.displaySets.length) {
+              setCurrentBlockIdx(prev => prev + 1);
+              setCurrentLineIdx(0);
+              setCurrentChunkIdx(0);
+            } else {
+              // 全タイピング終了！
+              setIsGameOver(true);
+              try { playerRef.current?.stopVideo(); } catch (e) { }
+            }
           }
           setIsEngineReady(false);
         }
@@ -283,15 +295,13 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   // =====================
   useEffect(() => {
     if (roomId && playerId) {
-      const act = currentBlockIdx * 4 + currentLineIdx;
+      const act = currentLine?.absLineIdx ?? 0;
       updatePlayerProgress(roomId, playerId, act, currentChunkIdx, combo, maxCombo, 0);
     }
   }, [currentBlockIdx, currentLineIdx, currentChunkIdx, kgTick, combo, maxCombo, roomId, playerId]);
 
   if (!mapData || !mapData.displaySets || mapData.displaySets.length === 0) return <div>Loading...</div>;
   const scoreText = (roomState?.sharedScore || 0).toLocaleString();
-  const currentSet = mapData.displaySets[currentBlockIdx];
-  if (!currentSet) return <div>Ending...</div>;
 
   // 自分のプレイヤーカラー
   const myColor = roomState?.players?.[playerId]?.color || PLAYER_COLORS[myPos % 4];
@@ -300,63 +310,74 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     <div className='flex flex-col items-center mt-2 w-full max-w-4xl glass p-8 rounded-3xl relative overflow-hidden font-premium'>
       <div className='absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500' />
 
-      {/* YouTube プレイヤー */}
-      <div className='mb-6 rounded-2xl overflow-hidden bg-black flex items-center justify-center ring-4 ring-white/5' style={{ width: '426px', height: '240px' }}>
-        <div id='youtube-player' key={mapData.videoId} />
+      {/* 
+        YouTube プレイヤー: 
+        isGameOver の時でも DOM を消さない（removeChild エラー防止のため display: none で隠す） 
+      */}
+      <div 
+        className={'mb-6 rounded-2xl overflow-hidden bg-black items-center justify-center ring-4 ring-white/5 ' + (isGameOver ? 'hidden' : 'flex')}
+        style={{ width: '426px', height: '240px' }}
+      >
+        <div id='youtube-player' />
       </div>
 
-      {/* ローマ字ガイド（COMBO行の上） */}
-      <div className='w-full px-2 mb-2 font-mono font-bold text-4xl tracking-widest min-h-[3rem]'>
-        {isEngineReady && (
-          <>
-            <span className='text-white/30'>
-              {(keygraph.key_done() || '').toUpperCase()}
-            </span>
-            <span style={{ color: myColor }}>
-              {(keygraph.key_candidate() || '').toUpperCase()}
-            </span>
-          </>
-        )}
-      </div>
-
-      {/* COMBO & スコア */}
-      <div className='flex justify-between items-center w-full mb-4 px-2 font-black italic text-white'>
-        <div
-          key={comboAnimKey}
-          className='text-3xl transition-transform'
-          style={{ animation: comboAnimKey > 0 ? 'comboScale 0.3s ease-out' : 'none' }}
-        >
-          {combo + ' COMBO'}
+      {/* ゲームオーバー演出でも DOM 構造を大幅に変更しないように、メインUIの中で切り替える */}
+      {isGameOver ? (
+        <div className='flex flex-col items-center gap-4 py-8 animate-in fade-in zoom-in duration-1000 w-full'>
+          <div className='text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-600 italic tracking-tighter'>RESULT</div>
+          <div className='text-3xl font-black text-white'>SCORE: <span className='text-yellow-400'>{scoreText}</span></div>
+          <div className='text-xl font-bold text-white/60'>MAX COMBO: {maxCombo}</div>
+          <button
+            onClick={() => {
+              try { playerRef.current?.stopVideo(); } catch (e) {}
+              onBackToMenu();
+            }}
+            className='mt-6 px-8 py-3 bg-white/10 hover:bg-white/20 text-white font-black rounded-2xl text-sm transition-colors'
+          >
+            BACK TO LOBBY
+          </button>
         </div>
-        <div className='text-5xl'>{scoreText}</div>
-      </div>
-
-      {/* 歌詞エリア / リザルト画面 */}
-      <div className='flex flex-col w-full space-y-1'>
-        {isGameOver ? (
-          <div className='flex flex-col items-center gap-4 py-12 animate-in fade-in zoom-in duration-1000'>
-            <div className='text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-600 italic tracking-tighter'>RESULT</div>
-            <div className='text-3xl font-black text-white'>SCORE: <span className='text-yellow-400'>{scoreText}</span></div>
-            <div className='text-xl font-bold text-white/60'>MAX COMBO: {maxCombo}</div>
-            
-            <button 
-              onClick={() => window.location.reload()}
-              className='mt-6 px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm transition-colors'
-            >
-              BACK TO LOBBY
-            </button>
+      ) : (
+        <>
+          {/* ローマ字ガイド（COMBO行の上） */}
+          <div className='w-full px-2 mb-2 font-mono font-bold text-4xl tracking-widest min-h-[3rem]'>
+            {isEngineReady && (
+              <>
+                <span className='text-white/30'>
+                  {(keygraph.key_done() || '').toUpperCase()}
+                </span>
+                <span style={{ color: myColor }}>
+                  {(keygraph.key_candidate() || '').toUpperCase()}
+                </span>
+              </>
+            )}
           </div>
-        ) : (
-          currentSet.lines.map((line: any, lIdx: number) => {
-            const actSetIdx = currentBlockIdx;
-            const pid = playerIds[actSetIdx % numPlayers];
+          
+          {/* COMBO & スコア */}
+          <div className='flex justify-between items-center w-full mb-4 px-2 font-black italic text-white'>
+            <div
+              key={comboAnimKey}
+              className='text-3xl transition-transform'
+              style={{ animation: comboAnimKey > 0 ? 'comboScale 0.3s ease-out' : 'none' }}
+            >
+              {combo + ' COMBO'}
+            </div>
+            <div className='text-5xl'>{scoreText}</div>
+          </div>
+        </>
+      )}
+
+      {/* 歌詞エリア */}
+      {!isGameOver && currentSet && (
+        <div className='flex flex-col w-full' style={{ minHeight: '16rem' }}>
+          {currentSet.lines.map((line: any, lIdx: number) => {
+            const pid = playerIds[line.absLineIdx % numPlayers];
             const u = roomState?.players?.[pid];
-            const isCurrentPlayerMe = (actSetIdx % numPlayers === myPos);
-            const playerColor = u?.color || PLAYER_COLORS[actSetIdx % 4];
-            
-            const absLineIdx = actSetIdx * 4 + lIdx;
-            const isDone = u && u.currentLineIdx > absLineIdx;
-            const isSomeoneElseActive = !isCurrentPlayerMe && u && u.currentLineIdx === absLineIdx;
+            const isCurrentPlayerMe = (line.absLineIdx % numPlayers === myPos);
+            const playerColor = u?.color || PLAYER_COLORS[line.absLineIdx % 4];
+
+            const isDone = u && u.currentLineIdx > line.absLineIdx;
+            const isSomeoneElseActive = !isCurrentPlayerMe && u && u.currentLineIdx === line.absLineIdx;
             const pidName = (u?.name || '---') + (pid === playerId ? ' (YOU)' : '');
 
             return (
@@ -373,12 +394,22 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 pidName={pidName}
               />
             );
-          })
-        )}
-      </div>
+          })}
+          {/* 足りない分をダミー行で埋めて常に4行分のスペースを確保 */}
+          {Array.from({ length: Math.max(0, 4 - currentSet.lines.length) }).map((_, i) => (
+            <div
+              key={'dummy-' + i}
+              className='py-2 px-6 rounded-xl'
+              style={{ minHeight: '4rem' }}
+            />
+          ))}
+        </div>
+      )}
+
+
 
       {/* START / SYNC ACTIVE ボタン */}
-      <div className='mt-8 text-center'>
+      <div className={'mt-8 text-center ' + (isGameOver ? 'hidden' : 'block')}>
         {!isStarted ? (
           <button
             onClick={() => setRoomStartTime(roomId)}

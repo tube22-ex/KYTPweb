@@ -63,6 +63,11 @@ function App() {
     }
   };
 
+  // リザルト画面から曲選択に戻る
+  const handleBackToMenu = () => {
+    setMapData(null);
+  };
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#0f172a] text-white p-6 overflow-x-hidden selection:bg-blue-500/30">
       {/* 背景の装飾的な光 */}
@@ -154,6 +159,7 @@ function App() {
                 roomId={roomId}
                 playerId={playerId}
                 roomState={roomState}
+                onBackToMenu={handleBackToMenu}
               />
             </div>
           )}
