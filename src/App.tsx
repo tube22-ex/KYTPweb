@@ -5,6 +5,13 @@ import { PlayerLane } from './components/PlayerLane';
 import { ParseResult, fetchMapData } from './services/api';
 import { joinRoom, subscribeToRoom, RoomState, setRoomMapId, PLAYER_COLORS, getRoomState, resetRoom, determineHostId, deleteRoomIfEmpty, subscribeToAllRooms, leaveRoom as cleanupPlayer, updatePlayerHeartbeat } from './services/sync';
 
+interface PlayedHistoryItem {
+  id: string;
+  title: string;
+  thumbnail: string;
+  timestamp: number;
+}
+
 function App() {
   const [mapData, setMapData] = useState<ParseResult | null>(null);
 
@@ -21,6 +28,26 @@ function App() {
   const [inRoom, setInRoom] = useState(false);
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [allRooms, setAllRooms] = useState<Record<string, RoomState> | null>(null);
+
+  // 履歴管理
+  const [history, setHistory] = useState<PlayedHistoryItem[]>(() => {
+    const saved = localStorage.getItem('kytp_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const saveToHistory = (data: ParseResult, mid: string) => {
+    if (!data.videoId) return;
+    const thumbnail = `https://img.youtube.com/vi/${data.videoId}/mqdefault.jpg`;
+    const newItem: PlayedHistoryItem = {
+      id: mid,
+      title: data.title || 'Unknown Stage',
+      thumbnail,
+      timestamp: Date.now()
+    };
+    const newHistory = [newItem, ...history.filter(h => h.id !== mid)].slice(0, 5);
+    setHistory(newHistory);
+    localStorage.setItem('kytp_history', JSON.stringify(newHistory));
+  };
 
   const handleJoin = async () => {
     console.log('handleJoin clicked');
@@ -54,39 +81,35 @@ function App() {
   // ルームの曲が変更されたら自動でフェッチする
   useEffect(() => {
     if (roomState?.mapId) {
-      if (!mapData || typeof mapData === 'object') { // 厳密な比較は省略し再フェッチ
+      if (!mapData || typeof mapData === 'object') {
         fetchMapData(roomState.mapId).then(data => {
           setMapData(data);
+          saveToHistory(data, roomState.mapId!);
         }).catch(err => {
           console.error('Failed to sync map:', err);
         });
       }
     } else {
-      setMapData(null); // 曲がリセットされた時
+      setMapData(null);
     }
   }, [roomState?.mapId]);
 
   const handleMapLoad = async (data: ParseResult, inputMapId: string) => {
     setMapData(data);
+    saveToHistory(data, inputMapId);
     if (inRoom) {
-      // 自分が曲をロードしたらFirebaseのRoom状態も更新する
       await setRoomMapId(roomId, inputMapId);
     }
   };
 
-  // リザルト画面から曲選択に戻る
   const handleBackToMenu = async () => {
-    // 自身がホストなら部屋をリセット（idle状態に戻す）
     const isHost = determineHostId(roomState?.players) === playerId;
     if (isHost && roomId) {
       await resetRoom(roomId);
     }
-
     setMapData(null);
-    // Note: leaveRoomは呼び出さず、inRoom/roomIdも維持することでロビー（選曲画面）に戻る
   };
 
-  // 全ルーム購読とクリーンアップ
   useEffect(() => {
     if (!inRoom) {
       const unsub = subscribeToAllRooms((rooms) => {
@@ -97,14 +120,10 @@ function App() {
             const r = rooms[rid];
             const players = r.players || {};
             const pIds = Object.keys(players);
-
-            // 0人の部屋を削除
             if (pIds.length === 0) {
               deleteRoomIfEmpty(rid);
               return;
             }
-
-            // 幽霊プレイヤー（30秒以上無反応）を削除
             pIds.forEach(pid => {
               const p = players[pid];
               const last = p.lastSeen || 0;
@@ -119,9 +138,6 @@ function App() {
     }
   }, [inRoom]);
 
-
-
-  // ハートビート (15秒ごとに生存確認を更新)
   useEffect(() => {
     if (inRoom && roomId && playerId) {
       const interval = setInterval(() => {
@@ -185,7 +201,6 @@ function App() {
             </button>
           </div>
 
-          {/* 稼働中ステージリスト */}
           {Object.keys(allRooms || {}).length > 0 && (
             <div className="mt-12 pt-8 border-t-2 border-zinc-50">
               <div className="flex items-center gap-3 mb-6">
@@ -222,40 +237,72 @@ function App() {
           )}
         </div>
       ) : (
-        <div className="w-full max-w-5xl flex flex-col items-center relative z-10 mx-auto">
-          <div className="bg-white border-2 border-white shadow-md px-6 py-2.5 rounded-none mb-8 flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] font-black text-rose-300 uppercase tracking-widest italic">Room</span>
-              <span className="px-3 py-1 bg-rose-50 rounded-none font-black text-sm tabular-nums text-rose-400 tracking-tighter"># {roomId}</span>
-            </div>
-            <div className="w-[1px] h-4 bg-zinc-100"></div>
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] font-black text-purple-300 uppercase tracking-widest italic">Player</span>
-              <span className="font-black text-sm text-zinc-600 uppercase italic">{playerName}</span>
-            </div>
-          </div>
-
-          {/* 楽曲選択・ロード前のみアバターを表示（プレイ中はTypingArea内で表示） */}
-          {!mapData && <PlayerLane roomState={roomState} playerId={playerId} />}
-
-          {!mapData && (
-            <div className="w-full max-w-2xl transform transition-all animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <MapLoader onLoad={handleMapLoad} />
-            </div>
-          )}
-
+        <div className="w-full max-w-[1240px] flex gap-8 items-start relative z-10 mx-auto">
+          {/* 左サイドバー: プレイ履歴 */}
           {mapData && (
-            <div className="w-full transform transition-all animate-in fade-in zoom-in-95 duration-700">
-              <TypingArea
-                key={roomState?.mapId || 'none'}
-                mapData={mapData}
-                roomId={roomId}
-                playerId={playerId}
-                roomState={roomState}
-                onBackToMenu={handleBackToMenu}
-              />
-            </div>
+            <aside className="w-48 flex-shrink-0 animate-in fade-in slide-in-from-left-4 duration-700 hidden lg:block sticky top-8">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-1.5 h-4 bg-rose-400 rounded-full"></div>
+                <h2 className="text-[10px] font-black text-rose-300 uppercase tracking-[0.2em] italic">History</h2>
+              </div>
+              <div className="flex flex-col gap-4">
+                {history.map((item) => (
+                  <div key={item.id} 
+                    onClick={() => {
+                      fetchMapData(item.id).then(data => handleMapLoad(data, item.id));
+                    }}
+                    className="group relative bg-white border-2 border-white shadow-sm hover:shadow-md transition-all p-1 cursor-pointer active:scale-95"
+                  >
+                    <img src={item.thumbnail} alt="" className="w-full aspect-video object-cover grayscale-[0.3] group-hover:grayscale-0 transition-all" />
+                    <div className="p-2">
+                      <div className="text-[9px] font-black text-rose-300 mb-0.5 tabular-nums">#{item.id}</div>
+                      <div className="text-[10px] font-bold text-zinc-600 truncate leading-tight">{item.title}</div>
+                    </div>
+                  </div>
+                ))}
+                {history.length === 0 && (
+                  <div className="text-[9px] font-bold text-zinc-300 uppercase tracking-widest text-center py-10 border-2 border-dashed border-zinc-100 italic">
+                    No History
+                  </div>
+                )}
+              </div>
+            </aside>
           )}
+
+          <div className="flex-1 flex flex-col items-center">
+            <div className="bg-white border-2 border-white shadow-md px-6 py-2.5 rounded-none mb-8 flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-black text-rose-300 uppercase tracking-widest italic">Room</span>
+                <span className="px-3 py-1 bg-rose-50 rounded-none font-black text-sm tabular-nums text-rose-400 tracking-tighter"># {roomId}</span>
+              </div>
+              <div className="w-[1px] h-4 bg-zinc-100"></div>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-black text-purple-300 uppercase tracking-widest italic">Player</span>
+                <span className="font-black text-sm text-zinc-600 uppercase italic">{playerName}</span>
+              </div>
+            </div>
+
+            {!mapData && <PlayerLane roomState={roomState} playerId={playerId} />}
+
+            {!mapData && (
+              <div className="w-full max-w-2xl transform transition-all animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <MapLoader onLoad={handleMapLoad} />
+              </div>
+            )}
+
+            {mapData && (
+              <div className="w-full transform transition-all animate-in fade-in zoom-in-95 duration-700">
+                <TypingArea
+                  key={roomState?.mapId || 'none'}
+                  mapData={mapData}
+                  roomId={roomId}
+                  playerId={playerId}
+                  roomState={roomState}
+                  onBackToMenu={handleBackToMenu}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
 

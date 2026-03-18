@@ -88,125 +88,115 @@ async function splitYomi(
   const katakanaToHiragana = (src: string) =>
     src.replace(/[\u30a1-\u30f6]/g, (m) => String.fromCharCode(m.charCodeAt(0) - 0x60));
 
-  const cleanWord = katakanaToHiragana(word.replace(/[！？!?　 、。・]/g, '')).trim();
-  if (!cleanWord) return [];
-  if (/^[a-zA-Z0-9 ]+$/.test(cleanWord)) return cleanWord.split(' ').filter(p => p);
+  // 1. スペース（半角・全角）で事前分割
+  const initialParts = word.split(/[ 　]/).filter(p => p.length > 0);
+  if (initialParts.length === 0) return [];
 
-  try {
-    const tokenizer = await getTokenizer();
-    const tokens = tokenizer.tokenize(cleanWord);
+  const results: string[] = [];
+  const SMALL_CHARS = /[っッゃゅょャュョぁぃぅぇぉァィゥェォー]/;
 
-    const SMALL_CHARS = /[っッゃゅょャュョぁぃぅぇぉァィゥェォー]/;
-
-    // 文節グループ化（自立語 + 付属語/非自立語/接尾辞）
-    const groups: string[] = [];
-    let cur = '';
-    for (const t of tokens) {
-      const pos = t.pos;
-      const pos1 = t.pos_detail_1;
-      
-      const isFuzoku = ['助詞', '助動詞'].includes(pos);
-      const isNonIndep = pos1 === '非自立'; // 「いって(しまっ)た」の「しまっ」など
-      const isSuffix = pos1 === '接尾';     // 「〜さ」「〜くん」など
-      const isSmallChar = SMALL_CHARS.test(t.surface_form); // 形態素が「ゃ」「っ」などで始まっている場合
-      
-      if (!isFuzoku && !isNonIndep && !isSuffix && !isSmallChar) {
-        if (cur) groups.push(cur);
-        cur = t.surface_form;
-      } else {
-        cur += t.surface_form;
-      }
-    }
-    if (cur) groups.push(cur);
-
-    // ★追加
-    console.log('【groups】', cleanWord, '→', groups);
-
-    // マージ（基本：MAXを超えない範囲でMINに近づける）
-    let result = [...groups];
-    let changed = true;
-    while (changed) {
-      changed = false;
-      const next: string[] = [];
-      let i = 0;
-      while (i < result.length) {
-        const g = result[i];
-        if (g.length < MIN) {
-          // 次と結合（MAX内）
-          if (i + 1 < result.length && (g + result[i + 1]).length <= MAX) {
-            next.push(g + result[i + 1]); i += 2; changed = true; continue;
-          }
-          // 前と結合（MAX内）
-          if (next.length && (next[next.length - 1] + g).length <= MAX) {
-            next[next.length - 1] += g; i++; changed = true; continue;
-          }
-        }
-        next.push(g); i++;
-      }
-      result = next;
+  for (const part of initialParts) {
+    // 英語・記号のみのパーツはそのまま採用（ただし記号は除去）
+    if (/^[a-zA-Z0-9!?. ,:;'"\-()[\]{}<>/\\#$%&|^~@+*=！!．，：；”’（）［］｛｝＜＞／＼＃＄％＆｜＾〜＠＋＊＝]+$/.test(part)) {
+      // 英数字のみを残す（記号をすべて削除）
+      const cleanPart = part.replace(/[^a-zA-Z0-9]/g, '');
+      if (cleanPart) results.push(cleanPart);
+      continue;
     }
 
-    // 強制マージ（MINを満たさないものを、MAXを多少超えても良いので結合する）
-    // 例: MIN=4, MAX=6 の時、[3, 4] -> [7] にする
-    {
-      const next: string[] = [];
-      let i = 0;
-      while (i < result.length) {
-        let g = result[i];
-        if (g.length < MIN) {
-          if (i + 1 < result.length) {
-            // 次があるなら結合
-            g = g + result[i + 1];
-            i += 2;
-          } else if (next.length > 0) {
-            // 次がないが前があるなら、前の末尾に結合
-            next[next.length - 1] += g;
-            i++;
-            continue;
-          } else {
-            i++;
-          }
+    // 日本語が含まれるパーツの処理
+    // 記号をすべて削除
+    const cleanWord = katakanaToHiragana(part.replace(/[^a-zA-Z0-9\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf\uff10-\uff19\uff21-\uff3a\uff41-\uff5a]/g, '')).trim();
+    if (!cleanWord) continue;
+
+    try {
+      const tokenizer = await getTokenizer();
+      const tokens = tokenizer.tokenize(cleanWord);
+
+      // 文節グループ化
+      const groups: string[] = [];
+      let cur = '';
+      for (const t of tokens) {
+        const pos = t.pos;
+        const pos1 = t.pos_detail_1;
+        const isFuzoku = ['助詞', '助動詞'].includes(pos);
+        const isNonIndep = pos1 === '非自立';
+        const isSuffix = pos1 === '接尾';
+        const isSmallChar = SMALL_CHARS.test(t.surface_form);
+
+        if (!isFuzoku && !isNonIndep && !isSuffix && !isSmallChar) {
+          if (cur) groups.push(cur);
+          cur = t.surface_form;
         } else {
-          i++;
+          cur += t.surface_form;
         }
-        next.push(g);
       }
-      result = next;
-    }
-    console.log('【merged】', result);
+      if (cur) groups.push(cur);
 
-    // MAX超え強制分割
-    const smartSplit = (text: string, maxLen: number): string[] => {
-      const parts: string[] = [];
-      let temp = text;
-      while (temp.length > maxLen) {
-        let splitLen = maxLen;
-        if (temp.length < maxLen + MIN) splitLen = Math.floor(temp.length / 2);
-        let j = splitLen;
-        const initialJ = j;
-        while (j > 1 && SMALL_CHARS.test(temp[j])) j--;
-        if (j !== initialJ) console.log('【smartSplit adj】', temp.slice(0, initialJ), '→', j, ':', temp[j]);
-        parts.push(temp.slice(0, j));
-        temp = temp.slice(j);
+      // パーツ内でのマージ（MAXを超えない範囲でMINに近づける）
+      let partResult = [...groups];
+      let changed = true;
+      while (changed) {
+        changed = false;
+        const next: string[] = [];
+        let i = 0;
+        while (i < partResult.length) {
+          const g = partResult[i];
+          if (g.length < MIN) {
+            if (i + 1 < partResult.length && (g + partResult[i + 1]).length <= MAX) {
+              next.push(g + partResult[i + 1]); i += 2; changed = true; continue;
+            }
+            if (next.length && (next[next.length - 1] + g).length <= MAX) {
+              next[next.length - 1] += g; i++; changed = true; continue;
+            }
+          }
+          next.push(g); i++;
+        }
+        partResult = next;
       }
-      if (temp) parts.push(temp);
-      return parts;
-    };
 
-    const final = result.flatMap(r => smartSplit(r, MAX));
-    console.log('【final】', final);
+      // 強制マージ（MINを満たさないものを、MAXを多少超えても良いので結合する）
+      {
+        const next: string[] = [];
+        let i = 0;
+        while (i < partResult.length) {
+          let g = partResult[i];
+          if (g.length < MIN) {
+            if (i + 1 < partResult.length) { g = g + partResult[i + 1]; i += 2; }
+            else if (next.length > 0) { next[next.length - 1] += g; i++; continue; }
+            else { i++; }
+          } else { i++; }
+          next.push(g);
+        }
+        partResult = next;
+      }
 
-    // 照合
-    if (final.join('') !== cleanWord) {
-      console.warn('kuromoji mismatch:', cleanWord, '→', final);
-      return smartSplit(cleanWord, MAX);
+      // MAX超え強制分割用関数
+      const smartSplit = (text: string, maxLen: number): string[] => {
+        const parts: string[] = [];
+        let temp = text;
+        while (temp.length > maxLen) {
+          let splitLen = maxLen;
+          if (temp.length < maxLen + MIN) splitLen = Math.floor(temp.length / 2);
+          let j = splitLen;
+          while (j > 1 && SMALL_CHARS.test(temp[j])) j--;
+          parts.push(temp.slice(0, j));
+          temp = temp.slice(j);
+        }
+        if (temp) parts.push(temp);
+        return parts;
+      };
+
+      const finalPart = partResult.flatMap(r => smartSplit(r, MAX));
+      results.push(...finalPart);
+
+    } catch (e) {
+      console.warn('kuromoji error for part, fallback:', e);
+      results.push(part);
     }
-    return final;
-
-  } catch (e) {
-    console.warn('kuromoji error, fallback:', e);
-    return [word];
   }
+
+  return results;
 }
 
 // ③ JsonLine配列 → Chunk配列（フラット）
@@ -264,7 +254,7 @@ function buildDisplayLines(chunks: Chunk[], lineMaxChars = 14): DisplayLine[] {
 // ⑤ DisplayLine配列 → DisplaySet配列
 function buildDisplaySets(allLines: DisplayLine[], setMaxLines = 4): DisplaySet[] {
   const sets: DisplaySet[] = [];
-  
+
   // まず、DisplayLineを「元の歌詞の行（absLineIdx）」ごとにグループ化する
   const groups: DisplayLine[][] = [];
   allLines.forEach(line => {
@@ -281,10 +271,10 @@ function buildDisplaySets(allLines: DisplayLine[], setMaxLines = 4): DisplaySet[
 
   for (const group of groups) {
     // 現在のセットの最後の行の開始時間を確認
-    const lastLineInSet = currentSet && currentSet.lines.length > 0 
-      ? currentSet.lines[currentSet.lines.length - 1] 
+    const lastLineInSet = currentSet && currentSet.lines.length > 0
+      ? currentSet.lines[currentSet.lines.length - 1]
       : null;
-    
+
     // 6秒以上離れているかチェック (isTooFar)
     const isTooFar = lastLineInSet && (group[0].timeMs - lastLineInSet.timeMs >= 6000);
 
@@ -304,7 +294,8 @@ function buildDisplaySets(allLines: DisplayLine[], setMaxLines = 4): DisplaySet[
 // ============================================
 
 export const fetchMapData = async (mapId: string | number): Promise<ParseResult> => {
-  // 1. キャッシュをチェック
+  // 1. キャッシュをチェック (開発・修正中のため一時的に無効化)
+  /*
   try {
     const cached = await getCachedMapData(mapId);
     if (cached) {
@@ -314,6 +305,7 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
   } catch (err) {
     console.warn('Failed to fetch from cache:', err);
   }
+  */
 
   const response = await fetch(`https://ytyping.net/api/maps/${mapId}/json`);
   if (!response.ok) {
@@ -369,9 +361,9 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
     }
   }
 
-  const result = { 
-    lines: parsedLines, 
-    displaySets, 
+  const result = {
+    lines: parsedLines,
+    displaySets,
     videoId,
     title: title ? String(title) : undefined,
     artist: artist ? String(artist) : undefined

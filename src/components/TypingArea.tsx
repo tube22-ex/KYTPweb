@@ -46,7 +46,7 @@ const LineItem: React.FC<any> = ({
           }
 
           return (
-            <span key={i} className="relative transition-opacity duration-300" style={{ color: playerColor }}>
+            <span key={i} className="relative transition-all duration-300" style={{ color: playerColor }}>
               {isChunkActive || isOpponentActiveChunk ? (
                 <>
                   <span className="opacity-20 inline-block">{matchedTyping}</span>
@@ -468,7 +468,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 <div className="flex-1 flex items-center justify-start pl-10">
                   {isEngineReady && isMe ? (
                     <div className="flex items-center gap-2">
-                      <span className="text-6xl font-black italic tracking-wider text-white drop-shadow-lg">
+                      <span className="text-5xl font-black italic tracking-wider text-white drop-shadow-lg">
                         <span className="opacity-30">{(keygraph.key_done() || '').toUpperCase()}</span>
                         <span>{(keygraph.key_candidate() || '').toUpperCase()}</span>
                       </span>
