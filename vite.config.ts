@@ -29,6 +29,7 @@ export default defineConfig({
   resolve: {
     alias: {
       pako: resolve(__dirname, 'node_modules/pako/dist/pako.js'),
+      'zlibjs/bin/gunzip.min.js': resolve(__dirname, 'src/utils/zlib-shim.ts'),
     },
   },
   optimizeDeps: {
