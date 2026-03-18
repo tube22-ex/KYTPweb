@@ -1,5 +1,6 @@
 import { ref, onValue, set, update, serverTimestamp, get, onDisconnect, remove } from "firebase/database";
-import { db } from "../configs/firebase";
+import { db, fs } from "../configs/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 export interface PlayerState {
   id: string;
@@ -302,6 +303,23 @@ export const determineHostId = (players: Record<string, PlayerState> | undefined
     return a.id.localeCompare(b.id);
   });
   return sorted[0].id;
+};
+
+/**
+ * 譜面データのキャッシュを取得します。
+ */
+export const getCachedMapData = async (mapId: string | number): Promise<any | null> => {
+  const docRef = doc(fs, "mapCache", String(mapId));
+  const snap = await getDoc(docRef);
+  return snap.exists() ? snap.data() : null;
+};
+
+/**
+ * 譜面データをキャッシュに保存します。
+ */
+export const saveMapDataToCache = async (mapId: string | number, data: any) => {
+  const docRef = doc(fs, "mapCache", String(mapId));
+  await setDoc(docRef, data);
 };
 
 /**
