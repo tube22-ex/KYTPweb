@@ -31,3 +31,6 @@ src/tsc_error.log
 # OS
 .DS_Store
 Thumbs.db
+
+# kuromoji dict
+public/kuromoji-dict/

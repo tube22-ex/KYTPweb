@@ -1,3 +1,21 @@
+import kuromoji from 'kuromoji';
+
+// ============================================
+// Kuromoji Dict Load Fix (Vite/Browser)
+// ============================================
+// Vite の開発サーバが .gz ファイルを自動解凍したり MIME タイプを誤判定したりするのを防ぐため、
+// 辞書ファイルに .bin 拡張子を付けてリクエストを書き換えます。
+if (typeof window !== 'undefined' && (window as any).XMLHttpRequest) {
+  const originalOpen = (window as any).XMLHttpRequest.prototype.open;
+  (window as any).XMLHttpRequest.prototype.open = function (method: string, url: string, ...rest: any[]) {
+    let fixedUrl = url;
+    if (fixedUrl && fixedUrl.includes('/kuromoji-dict/') && fixedUrl.endsWith('.gz')) {
+      fixedUrl += '.bin';
+    }
+    return originalOpen.call(this, method, fixedUrl, ...rest);
+  };
+}
+
 export interface YTypingLineRaw {
   time: string;
   lyrics: string;
@@ -35,132 +53,112 @@ export interface ParseResult {
 }
 
 // ============================================
-// よみがな分割ユーティリティ (splitYomi)
+// よみがな分割ユーティリティ (kuromoji.js)
 // ============================================
-const NO_BREAK_BEFORE = new Set([
-  'っ', 'ッ', 'ゃ', 'ゅ', 'ょ', 'ャ', 'ュ', 'ョ',
-  'ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ', 'ァ', 'ィ', 'ゥ', 'ェ', 'ォ', 'ー', '～'
-]);
+const toHira = (str: string) =>
+  str.replace(/[ァ-ン]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
 
-const JOSHI = [
-  'から', 'まで', 'より', 'ので', 'のに', 'けど', 'ても', 'にて',
-  'への', 'だけ', 'ほど', 'など', 'やら', 'とか', 'ながら', 'なら',
-  'からの', 'までの', 'よりも', 'けれど', 'だから', 'だって',
-  'が', 'を', 'は', 'も'
-];
+let tokenizerPromise: Promise<any> | null = null;
 
-function findRepeatEnd(str: string, pos: number): number {
-  for (let len = 2; len <= 4; len++) {
-    const pattern = str.slice(pos, pos + len);
-    if (pattern.length === len && str.startsWith(pattern, pos + len)) {
-      return pos + len * 2; // 繰り返し終端を返す
-    }
+function getTokenizer(): Promise<any> {
+  if (!tokenizerPromise) {
+    tokenizerPromise = new Promise((resolve, reject) => {
+      kuromoji
+        .builder({ dicPath: '/kuromoji-dict' })
+        .build((err: any, tokenizer: any) => {
+          if (err) reject(err);
+          else resolve(tokenizer);
+        });
+    });
   }
-  return -1;
+  return tokenizerPromise;
 }
 
-function findJoshiEnd(str: string, pos: number): number {
-  for (const j of JOSHI) {
-    if (str.startsWith(j, pos)) return pos + j.length;
-  }
-  return -1;
-}
+async function splitYomi(
+  lyrics: string,
+  word: string,
+  MIN = 4,
+  MAX = 10
+): Promise<string[]> {
+  if (!word.trim()) return [];
+  if (/^[a-zA-Z0-9 ]+$/.test(word)) return word.split(' ').filter(p => p);
 
-function mergeChunks(chunks: string[], minLen: number, maxLen: number): string[] {
-  if (!chunks.length) return chunks;
-  let result = [...chunks];
-  let changed = true;
-  while (changed) {
-    changed = false;
-    const next: string[] = [];
-    let i = 0;
-    while (i < result.length) {
-      const chunk = result[i];
-      if (chunk.length < minLen) {
-        if (i + 1 < result.length && (chunk + result[i + 1]).length <= maxLen) {
-          next.push(chunk + result[i + 1]); i += 2; changed = true; continue;
-        } else if (next.length && (next[next.length - 1] + chunk).length <= maxLen) {
-          next[next.length - 1] += chunk; i++; changed = true; continue;
-        }
+  try {
+    const tokenizer = await getTokenizer();
+    const tokens = tokenizer.tokenize(lyrics);
+
+    const NO_BREAK = new Set(['っ', 'ッ', 'ゃ', 'ゅ', 'ょ', 'ャ', 'ュ', 'ョ', 'ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ', 'ー']);
+
+    // 文節グループ化（自立語+付属語）
+    const groups: string[] = [];
+    let cur = '';
+    for (const t of tokens) {
+      const pos = t.pos;
+      const isFuzoku = ['助詞', '助動詞'].includes(pos);
+      const isKigo = pos === '記号';
+      if (isKigo) continue;
+      if (!isFuzoku) {
+        if (cur) groups.push(cur);
+        cur = toHira(t.reading || t.surface_form);
+      } else if (cur) {
+        cur += toHira(t.reading || t.surface_form);
       }
-      next.push(chunk); i++;
     }
-    result = next;
-  }
-  const final: string[] = [];
-  for (let chunk of result) {
-    while (chunk.length > maxLen) {
-      let i = maxLen;
-      while (i > 1 && NO_BREAK_BEFORE.has(chunk[i])) i--;
-      if (i <= 0) i = maxLen; // フォールバック: 全てが禁則文字の場合は強制分割
-      final.push(chunk.slice(0, i));
-      chunk = chunk.slice(i);
-    }
-    if (chunk) final.push(chunk);
-  }
-  return final;
-}
+    if (cur) groups.push(cur);
 
-function splitYomi(yomi: string, maxChunk = 6): string[] {
-  const minLen = 4;
-  const maxLen = maxChunk;
-  yomi = yomi.trim();
-  if (!yomi) return [];
-
-  // 括弧で囲まれたものはフィラーとして無視 (例: (ㅇㅇ))
-  if ((yomi.startsWith('(') && yomi.endsWith(')')) || (yomi.startsWith('（') && yomi.endsWith('）'))) {
-    return [];
-  }
-
-  // 既にスペースが含まれている場合はそれベースで分割再結合
-  if (/^[a-zA-Z0-9 ]+$/.test(yomi)) {
-    return mergeChunks(yomi.split(' ').filter(p => p), minLen, maxLen);
-  }
-  if (yomi.includes(' ')) {
-    const parts = yomi.split(' ').filter(p => p);
-    const result: string[] = [];
-    for (const p of parts) {
-      if (p.length > maxLen) result.push(...splitYomi(p, maxLen));
-      else result.push(p);
-    }
-    return mergeChunks(result, minLen, maxLen);
-  }
-
-  // 繰り返しパターンや助詞等でのぶつ切り
-  const chunks: string[] = [];
-  let start = 0, i = 0;
-  while (i < yomi.length) {
-    // 繰り返しパターンを優先チェック
-    const repeatEnd = findRepeatEnd(yomi, i);
-    if (repeatEnd !== -1) {
-      chunks.push(yomi.slice(start, repeatEnd));
-      start = repeatEnd;
-      i = repeatEnd;
-      continue;
+    // マージ
+    let result = [...groups];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const next: string[] = [];
+      let i = 0;
+      while (i < result.length) {
+        const g = result[i];
+        if (g.length < MIN) {
+          if (i + 1 < result.length && (g + result[i + 1]).length <= MAX) {
+            next.push(g + result[i + 1]); i += 2; changed = true; continue;
+          }
+          if (next.length && (next[next.length - 1] + g).length <= MAX) {
+            next[next.length - 1] += g; i++; changed = true; continue;
+          }
+        }
+        next.push(g); i++;
+      }
+      result = next;
     }
 
-    const end = findJoshiEnd(yomi, i);
-    if (end !== -1) {
-      chunks.push(yomi.slice(start, end));
-      start = end;
-      i = end;
-    } else {
-      i++;
+    // MAX超え強制分割
+    const final: string[] = [];
+    for (let r of result) {
+      while (r.length > MAX) {
+        let j = MAX;
+        while (j > 1 && NO_BREAK.has(r[j])) j--;
+        final.push(r.slice(0, j));
+        r = r.slice(j);
+      }
+      if (r) final.push(r);
     }
-  }
-  if (start < yomi.length) chunks.push(yomi.slice(start));
 
-  // チャンクを指定文字数にマージ
-  return mergeChunks(chunks, minLen, maxLen);
+    // wordとの照合（不一致はフォールバック）
+    if (final.join('') !== word.replace(/[！？]/g, '')) {
+      console.warn('kuromoji mismatch fallback:', lyrics);
+      return [word]; // そのまま返す
+    }
+    return final;
+
+  } catch (e) {
+    console.warn('kuromoji error, fallback:', e);
+    return [word];
+  }
 }
 
 // ③ JsonLine配列 → Chunk配列（フラット）
 function toChunks(jsonLines: ParsedLine[]): Chunk[] {
   const result: Chunk[] = [];
   for (const line of jsonLines) {
-    if (!line.rawWord.trim()) continue; // 空行スキップ
-    const texts = splitYomi(line.rawWord);
-    texts.forEach((text, idx) => {
+    if (!line.rawWord.trim() || line.isEnd) continue;
+    line.words.forEach((text, idx) => {
       result.push({
         text,
         timeMs: line.timeMs,
@@ -233,21 +231,15 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
 
   const data: YTypingLineRaw[] = await response.json();
 
-  const parsedLines: ParsedLine[] = data.map(line => {
-    // 時間をミリ秒に変換
-    const timeMs = parseFloat(line.time) * 1000;
-
-    // カスタム splitYomi 関数でよみがなを分割
-    const words = splitYomi(line.word);
-
-    return {
-      timeMs,
+  const parsedLines: ParsedLine[] = await Promise.all(
+    data.map(async line => ({
+      timeMs: parseFloat(line.time) * 1000,
       lyrics: line.lyrics,
-      words,
+      words: await splitYomi(line.lyrics, line.word),
       rawWord: line.word,
-      isEnd: line.lyrics === 'end' && line.word === '' // 両方満たす場合のみ
-    };
-  });
+      isEnd: line.lyrics === 'end' && line.word === ''
+    }))
+  );
 
   // メタデータから動画IDを取得 (https://ytyping.net/api/maps/${mapId})
   let videoId = undefined;

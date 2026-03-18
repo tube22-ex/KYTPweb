@@ -164,35 +164,49 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   useEffect(() => {
     const int = setInterval(() => {
       const p = playerRef.current;
-      if (!p || typeof p.getCurrentTime !== 'function') return;
-      if (isStarted) {
-        const s = p.getPlayerState();
-        const now = Date.now();
-        if (s === 5 || s === 2 || s === -1) {
-          if (now - lastLogTime.current > 3000) { p.playVideo(); lastLogTime.current = now; }
+      if (!isStarted) return;
+
+      const start = roomState?.startTime;
+
+      // ① 経過時間ベースのフォールバック強制終了
+      //    動画がフリーズしていても必ず endTimeMs を過ぎたら終了させる
+      if (endTimeMs && start) {
+        const elapsedMs = Date.now() - start;
+        if (elapsedMs >= endTimeMs) {
+          setIsGameOver(true);
+          try { p?.stopVideo?.(); } catch (e) { }
+          return;
         }
-        if (s === 1) {
-          const ms = p.getCurrentTime() * 1000;
+      }
 
-          // ゲーム終了判定
-          if (endTimeMs && ms >= endTimeMs) {
-            setIsGameOver(true);
-            try { p.stopVideo(); } catch (e) { }
-            return;
-          }
+      if (!p || typeof p.getCurrentTime !== 'function') return;
+      const now = Date.now();
+      const s = p.getPlayerState();
+      if (s === 5 || s === 2 || s === -1) {
+        if (now - lastLogTime.current > 3000) { p.playVideo(); lastLogTime.current = now; }
+      }
+      if (s === 1) {
+        const ms = p.getCurrentTime() * 1000;
 
-          const nextSet = mapData.displaySets?.[currentBlockIdx + 1];
-          if (nextSet && ms >= nextSet.timeMs) {
-            setCurrentBlockIdx(v => v + 1);
-            setCurrentLineIdx(0);
-            setCurrentChunkIdx(0);
-            setIsEngineReady(false);
-          }
+        // ② 動画時間ベースの終了判定（既存）
+        if (endTimeMs && ms >= endTimeMs) {
+          setIsGameOver(true);
+          try { p.stopVideo(); } catch (e) { }
+          return;
+        }
+
+        const nextSet = mapData.displaySets?.[currentBlockIdx + 1];
+        if (nextSet && ms >= nextSet.timeMs) {
+          setCurrentBlockIdx(v => v + 1);
+          setCurrentLineIdx(0);
+          setCurrentChunkIdx(0);
+          setIsEngineReady(false);
         }
       }
     }, 50);
     return () => clearInterval(int);
-  }, [currentBlockIdx, mapData.displaySets, isStarted]);
+  }, [currentBlockIdx, mapData.displaySets, isStarted, endTimeMs, roomState?.startTime]);
+
 
   // =====================
   // 時間が来たらチャンクをエンジンにロード (アクティブ化)
