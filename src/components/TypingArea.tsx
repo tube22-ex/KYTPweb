@@ -13,6 +13,7 @@ interface Props {
   onBackToMenu: () => void;
 }
 
+
 const LineItem: React.FC<any> = ({ 
   line, 
   lineIdx, 
@@ -22,91 +23,38 @@ const LineItem: React.FC<any> = ({
   playerColor, 
   isDone, 
   isSomeoneElseActive, 
-  pidName,
   opponentChunkIdx,
   currentTyping,
-  isFuture,
-  globalLineIdx,
-  isHostLine
 }) => {
   const isActiveLine = lineIdx === currentLineIdx;
-  const absLineIdx = line.absLineIdx;
-  const isGlobalTargetLine = absLineIdx === globalLineIdx;
 
   return (
-    <div className={'py-2 px-6 rounded-xl border border-transparent transition-colors duration-300 ' + (isActiveLine ? 'bg-white/10 border-white/20' : '')}>
-      <div className='flex items-center gap-2 mb-0.5 font-premium'>
-        <div className='w-1.5 h-1.5 rounded-full' style={{ backgroundColor: playerColor }} />
-        <span className='text-[9px] font-black uppercase' style={{ color: playerColor }}>
-          {pidName}
-        </span>
-        {isGlobalTargetLine && (
-          <span className='text-[8px] bg-red-500 text-white px-1 rounded animate-pulse'>TARGET</span>
-        )}
-        {isHostLine && (
-          <span className="px-1 py-0.5 bg-amber-500/20 text-amber-400 text-[8px] font-black rounded uppercase tracking-tighter ring-1 ring-amber-500/30 flex-shrink-0">Host</span>
-        )}
-      </div>
-      
-      <div className='text-3xl font-black mb-1 leading-snug font-premium flex flex-wrap'>
+    <div className={`py-1 px-8 transition-all duration-500 rounded-none ${isActiveLine ? 'bg-white shadow-[0_4px_20px_rgba(255,133,161,0.15)] relative z-10 scale-[1.05]' : ''}`}>
+      <div className='text-2xl font-black leading-tight flex flex-wrap gap-x-3 tracking-tighter'>
         {line.chunks.map((chunk: any, i: number) => {
-          if (isEngineReady && isActiveLine) {
-            const isActiveChunk = i === currentChunkIdx;
-            const isChunkDone = i < currentChunkIdx;
-            if (isActiveChunk) {
-              const done = keygraph.seq_done() || '';
-              const rest = keygraph.seq_candidates() || '';
-              return (
-                <span key={i}>
-                  {i > 0 && <span className='opacity-30'>　</span>}
-                  <span className='text-white/60'>{done}</span>
-                  <span style={{ color: playerColor }} className='font-black'>{rest.slice(0, 1)}</span>
-                  <span className='text-white/80'>{rest.slice(1)}</span>
-                </span>
-              );
-            } else if (isChunkDone) {
-              return (
-                <span key={i}>
-                  {i > 0 && <span className='opacity-30'>　</span>}
-                  <span className='text-white/50'>{chunk.text}</span>
-                </span>
-              );
-            } else {
-              return (
-                <span key={i}>
-                  {i > 0 && <span className='opacity-30'>　</span>}
-                  <span className='text-white/60'>{chunk.text}</span>
-                </span>
-              );
-            }
+          const isChunkActive = isActiveLine && i === currentChunkIdx;
+          const isOpponentActiveChunk = isSomeoneElseActive && i === (opponentChunkIdx ?? 0);
+          const isChunkFinished = isDone || (isActiveLine && i < currentChunkIdx);
+          
+          let matchedTyping = '';
+          if (isOpponentActiveChunk) {
+            matchedTyping = (currentTyping && chunk.text.startsWith(currentTyping)) ? currentTyping : '';
+          } else if (isChunkActive && isEngineReady) {
+             matchedTyping = keygraph.seq_done() || '';
           }
-          if (isSomeoneElseActive) {
-            const theirChunkIdx = opponentChunkIdx ?? 0;
-            const theirTyping = currentTyping ?? '';
-            // 進捗文字列が現在のチャンクの開始と一致しない場合は、古い（または他のチャンクの）データと見なして無視する
-            const matchedTyping = (theirTyping && chunk.text.startsWith(theirTyping)) ? theirTyping : '';
-            
-            const isPastChunk = i < theirChunkIdx;
-            const isCurrentChunk = i === theirChunkIdx;
 
-            if (isPastChunk) {
-              return <span key={i}>{i > 0 && <span className='opacity-30'>　</span>}<span className='text-white/50'>{chunk.text}</span></span>;
-            }
-            if (isCurrentChunk) {
-              const doneText = matchedTyping;
-              const restText = chunk.text.slice(doneText.length);
-              return (
-                <span key={i}>
-                  {i > 0 && <span className='opacity-30'>　</span>}
-                  <span className='text-white/60'>{doneText}</span>
-                  <span style={{ color: playerColor }} className='font-black'>{restText[0] || ''}</span>
-                  <span className='text-white/80'>{restText.slice(1)}</span>
-                </span>
-              );
-            }
-            return <span key={i}>{i > 0 && <span className='opacity-30'>　</span>}<span className='text-white/70'>{chunk.text}</span></span>;
-          }
-          return <span key={i}>{i > 0 && <span className='opacity-30'>　</span>}<span className={isDone ? 'text-white/50' : isFuture ? 'text-white/40' : 'text-white/80'}>{chunk.text}</span></span>;
+          return (
+            <span key={i} className="relative transition-opacity duration-300" style={{ color: playerColor }}>
+              {isChunkActive || isOpponentActiveChunk ? (
+                <>
+                  <span className="opacity-20 inline-block">{matchedTyping}</span>
+                  <span className="opacity-100">{chunk.text.slice(matchedTyping.length)}</span>
+                </>
+              ) : (
+                <span className={isChunkFinished ? 'opacity-30' : 'opacity-100'}>{chunk.text}</span>
+              )}
+            </span>
+          );
         })}
       </div>
     </div>
@@ -121,6 +69,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const [isEngineReady, setIsEngineReady] = useState(false);
   const [comboAnimKey, setComboAnimKey] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
   const [playerState, setPlayerState] = useState<number>(-1); // YT.PlayerState
 
   const playerRef = useRef<any>(null);
@@ -134,7 +83,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     return Object.keys(roomState.players).sort();
   }, [roomState?.players, playerId]);
 
-  const myPos = playerIds.indexOf(playerId);
   const isHost = determineHostId(roomState?.players) === playerId;
 
   const getAssignedPlayerId = useMemo(() => {
@@ -186,6 +134,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           onReady: (e: any) => {
             if (instanceIdRef.current !== curId) { e.target.destroy(); return; }
             playerRef.current = e.target;
+            setVideoDuration(e.target.getDuration());
             const start = roomState?.startTime;
             if (start) getServerTimeOffset().then(off => {
               const sec = (Date.now() + off - start) / 1000;
@@ -253,7 +202,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         setIsEngineReady(false);
         preparedRef.current = "";
         
-        // 次のセットでの開始行を初期化し、Firebaseにも同期して「前のセットの完了状態(-1)」が誤爆しないようにする
         const nLines = mapData.displaySets[nextBlockIdx].lines;
         const firstM = nLines.findIndex(l => isMine(l.absLineIdx));
         const newLocalLineIdx = firstM !== -1 ? firstM : 0;
@@ -304,7 +252,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const isNearNextSet = nextSet && (currentTime * 1000 > nextSet.timeMs - 3000);
   const isInitialGap = (currentBlockIdx === 0 && (currentTime * 1000 < (currentSet?.timeMs ?? 0) - 3000));
   const isFinalSetAndFinished = (currentBlockIdx + 1 === mapData.displaySets.length) && allFinished && !isGameOver;
-  // 動画が再生中(1)または一時停止(2)の場合のみスキップを許可する
   const isVideoActive = playerState === 1 || playerState === 2;
   const canSkip = isHost && isVideoActive && (allFinished || isInitialGap) && (nextSet || isFinalSetAndFinished) && !isGameOver && !isNearNextSet;
 
@@ -331,107 +278,85 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     return () => clearInterval(int);
   }, [isStarted, isEngineReady, isGameOver, currentSet, currentLine, currentLineIdx, currentChunkIdx, isMe]);
 
-  useEffect(() => {
-    const handle = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && canSkip) {
-        e.preventDefault();
-        if (nextSet) {
-          const skipToSec = (nextSet.timeMs / 1000) - 3;
-          if (playerRef.current?.seekTo) {
-            const t = Math.max(0, skipToSec);
-            playerRef.current.seekTo(t, true);
-            updateRoomPlayback(roomId, t);
-          }
-        } else if (isFinalSetAndFinished) {
-          // 最終セットが終わっている場合はリザルト（または動画末尾）へ
-          if (endTimeMs) {
-            const t = endTimeMs / 1000;
-            playerRef.current?.seekTo(t, true);
-            updateRoomPlayback(roomId, t);
-          } else {
-            setIsGameOver(true);
-          }
+  const handleKeydown = (e: KeyboardEvent) => {
+    if (e.code === 'Space' && canSkip) {
+      e.preventDefault();
+      if (nextSet) {
+        const skipToSec = (nextSet.timeMs / 1000) - 3;
+        if (playerRef.current?.seekTo) {
+          const t = Math.max(0, skipToSec);
+          playerRef.current.seekTo(t, true);
+          updateRoomPlayback(roomId, t);
         }
-        return;
-      }
-      if (!isStarted || !isEngineReady || !isMe || e.key.length > 1 || e.altKey || e.ctrlKey || e.metaKey) return;
-      const chunk = currentLine?.chunks?.[currentChunkIdx];
-      if (!chunk) return;
-      if (keygraph.next(e.key.toLowerCase())) {
-        try { sound.currentTime = 0; sound.play(); } catch (_) { }
-        setComboAnimKey(k => k + 1);
-        if (roomState?.sharedScore !== undefined) incrementSharedScore(roomId, roomState.sharedScore + 10);
-        
-        const isFinished = keygraph.is_finished();
-        
-        if (isFinished) {
-          const gl = roomState?.globalLineIdx ?? 0;
-          const gc = roomState?.globalChunkIdx ?? 0;
-          if (currentLine.absLineIdx === gl && currentChunkIdx === gc) {
-            const combo = (roomState?.sharedCombo || 0) + 1;
-            updateSharedCombo(roomId, combo, Math.max(roomState?.maxSharedCombo || 0, combo));
-            let nl = gl, nc = gc + 1;
-            if (nc >= currentLine.chunks.length) { nl++; nc = 0; }
-            updateGlobalProgress(roomId, nl, nc);
-          }
-          let nextLineIdxForFirebase = currentLine.absLineIdx;
-          let nextChunkIdxForFirebase = currentChunkIdx + 1;
-
-          if (nextChunkIdxForFirebase < currentLine.chunks.length) {
-            setCurrentChunkIdx(nextChunkIdxForFirebase);
-          } else {
-            let nextM = -1;
-            if (currentSet?.lines) {
-              for (let i = currentLineIdx + 1; i < currentSet.lines.length; i++) {
-                if (isMine(currentSet.lines[i].absLineIdx)) { nextM = i; break; }
-              }
-            }
-            if (nextM !== -1) {
-              setCurrentLineIdx(nextM);
-              setCurrentChunkIdx(0);
-              nextLineIdxForFirebase = currentSet.lines[nextM].absLineIdx;
-              nextChunkIdxForFirebase = 0;
-            } else {
-              setCurrentLineIdx(-1);
-              nextLineIdxForFirebase = -1;
-              nextChunkIdxForFirebase = 0;
-            }
-          }
-          // 次の状態をFirebaseに送る (進捗・タイピング内容は確実にクリア)
-          if (roomId && playerId) {
-            updatePlayerProgress(
-              roomId, 
-              playerId, 
-              nextLineIdxForFirebase, 
-              nextChunkIdxForFirebase, 
-              0, 0, 0, 
-              nextChunkIdxForFirebase, 
-              0, 
-              '', // currentTypingを確実にクリア
-              ''  // currentWordを確実にクリア
-            );
-          }
-          setIsEngineReady(false);
+      } else if (isFinalSetAndFinished) {
+        if (endTimeMs) {
+          const t = endTimeMs / 1000;
+          playerRef.current?.seekTo(t, true);
+          updateRoomPlayback(roomId, t);
         } else {
-          // まだチャンクが終わっていない場合のみ、現在のチャンクの進捗を更新
-          if (roomId && playerId && currentLine) {
-            updatePlayerProgress(
-              roomId, 
-              playerId, 
-              currentLine.absLineIdx, 
-              currentChunkIdx, 
-              0, 0, 0, 
-              currentChunkIdx, 
-              keygraph.seq_done()?.length || 0, 
-              keygraph.seq_done() || '', 
-              chunk.text
-            );
+          setIsGameOver(true);
+        }
+      }
+      return;
+    }
+    if (!isStarted || !isEngineReady || !isMe || e.key.length > 1 || e.altKey || e.ctrlKey || e.metaKey) return;
+    const chunk = currentLine?.chunks?.[currentChunkIdx];
+    if (!chunk) return;
+    if (keygraph.next(e.key.toLowerCase())) {
+      try { sound.currentTime = 0; sound.play(); } catch (_) { }
+      setComboAnimKey(k => k + 1);
+      if (roomState?.sharedScore !== undefined) incrementSharedScore(roomId, roomState.sharedScore + 10);
+      
+      const isFinished = keygraph.is_finished();
+      
+      if (isFinished) {
+        const gl = roomState?.globalLineIdx ?? 0;
+        const gc = roomState?.globalChunkIdx ?? 0;
+        if (currentLine.absLineIdx === gl && currentChunkIdx === gc) {
+          const combo = (roomState?.sharedCombo || 0) + 1;
+          updateSharedCombo(roomId, combo, Math.max(roomState?.maxSharedCombo || 0, combo));
+          let nl = gl, nc = gc + 1;
+          if (nc >= currentLine.chunks.length) { nl++; nc = 0; }
+          updateGlobalProgress(roomId, nl, nc);
+        }
+        let nextLineIdxForFirebase = currentLine.absLineIdx;
+        let nextChunkIdxForFirebase = currentChunkIdx + 1;
+
+        if (nextChunkIdxForFirebase < currentLine.chunks.length) {
+          setCurrentChunkIdx(nextChunkIdxForFirebase);
+        } else {
+          let nextM = -1;
+          if (currentSet?.lines) {
+            for (let i = currentLineIdx + 1; i < currentSet.lines.length; i++) {
+              if (isMine(currentSet.lines[i].absLineIdx)) { nextM = i; break; }
+            }
+          }
+          if (nextM !== -1) {
+            setCurrentLineIdx(nextM);
+            setCurrentChunkIdx(0);
+            nextLineIdxForFirebase = currentSet.lines[nextM].absLineIdx;
+            nextChunkIdxForFirebase = 0;
+          } else {
+            setCurrentLineIdx(-1);
+            nextLineIdxForFirebase = -1;
+            nextChunkIdxForFirebase = 0;
           }
         }
-      } else { try { miss_sound.play(); } catch (_) { } }
-    };
-    window.addEventListener('keydown', handle);
-    return () => window.removeEventListener('keydown', handle);
+        if (roomId && playerId) {
+          updatePlayerProgress(roomId, playerId, nextLineIdxForFirebase, nextChunkIdxForFirebase, 0, 0, 0, nextChunkIdxForFirebase, 0, '', '');
+        }
+        setIsEngineReady(false);
+      } else {
+        if (roomId && playerId && currentLine) {
+          updatePlayerProgress(roomId, playerId, currentLine.absLineIdx, currentChunkIdx, 0, 0, 0, currentChunkIdx, keygraph.seq_done()?.length || 0, keygraph.seq_done() || '', chunk.text);
+        }
+      }
+    } else { try { miss_sound.play(); } catch (_) { } }
+  };
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeydown);
+    return () => window.removeEventListener('keydown', handleKeydown);
   }, [isStarted, isEngineReady, isMe, currentLine, currentChunkIdx, roomState, roomId, currentBlockIdx, currentLineIdx, canSkip, nextSet, isMine]);
 
   useEffect(() => {
@@ -441,13 +366,11 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     if (gl > myA || (currentLineIdx === 0 && !isMe)) {
       const idx = currentSet.lines.findIndex(l => l.absLineIdx >= gl && isMine(l.absLineIdx));
       if (idx !== -1) {
-        // 現在の行より先にある場合、もしくは初期状態で自分の番を待っている場合にのみ追いつかせる(戻りは禁止)
         if (idx > currentLineIdx || (currentLineIdx === 0 && !isMe)) {
           setCurrentLineIdx(idx); 
           setCurrentChunkIdx(0);
         }
       } else if (currentSet.lines.length > 0 && gl > currentSet.lines[currentSet.lines.length - 1].absLineIdx) {
-        // 全員先のセットに進んでいる場合のみ -1 にする
         setCurrentLineIdx(-1);
       }
     }
@@ -455,12 +378,9 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
   useEffect(() => {
     if (!mapData.displaySets || !isStarted || isGameOver || !mapData.lines) return;
-    // プレイ可能な最後の絶対行番号（isEndではない行の最大値）
     const playableLines = mapData.lines.filter(l => !l.isEnd);
     const lastPlayableIdx = playableLines[playableLines.length - 1]?.absLineIdx ?? -1;
     const gl = roomState?.globalLineIdx ?? 0;
-    
-    // 全ての歌詞行が入力し終わった（＝グローバル行番号が最後の行を超えた）場合
     if (gl > lastPlayableIdx && lastPlayableIdx !== -1) {
       setIsGameOver(true);
       try { playerRef.current?.stopVideo(); } catch (e) {}
@@ -468,82 +388,145 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   }, [roomState?.globalLineIdx, mapData.lines, isGameOver, isStarted]);
 
   if (!mapData || !mapData.displaySets || mapData.displaySets.length === 0 || !currentSet) return <div>Loading...</div>;
-  const scoreText = (roomState?.sharedScore || 0).toLocaleString();
-  const myColor = roomState?.players?.[playerId]?.color || PLAYER_COLORS[myPos % 4];
+  const scoreText = (roomState?.sharedScore || 0).toString().padStart(6, '0');
 
   return (
-    <div className='flex flex-col items-center mt-2 w-full max-w-4xl glass p-8 rounded-3xl relative overflow-hidden font-premium mx-auto'>
-      <div className='absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500' />
-      <div className={'mb-6 rounded-2xl overflow-hidden bg-black flex items-center justify-center ring-4 ring-white/5 ' + (isGameOver ? 'hidden' : 'flex')} style={{ width: '426px', height: '240px' }}><div id='youtube-player' /></div>
-      {isStarted && !isGameOver && (
-        <div className="w-full h-2 bg-white/5 rounded-full mb-6 overflow-hidden relative ring-1 ring-white/5">
-          <div 
-            className="h-full bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-400 transition-all duration-300 ease-linear shadow-[0_0_15px_rgba(37,99,235,0.4)]" 
-            style={{ width: `${Math.min(100, (currentTime * 1000 / (endTimeMs || 1)) * 100)}%` }} 
-          />
+    <div className='flex flex-col items-center w-full max-w-5xl mx-auto pb-12 px-2'>
+      {/* プレイ画面全体をくくる枠 (角を丸くせず、paddingを0に) */}
+      <div className="w-full border-4 border-white rounded-none bg-white/5 backdrop-blur-sm p-0 flex flex-col gap-0 shadow-2xl overflow-hidden">
+        
+        {/* 1. プレイヤーレーン (背景を透過させて枠に密着) */}
+        <div className="w-full bg-white/10 border-b-2 border-white/20">
+          <PlayerLane roomState={roomState} playerId={playerId} />
         </div>
-      )}
-      {!isGameOver && <div className="w-full mb-6"><PlayerLane roomState={roomState} playerId={playerId} /></div>}
-      {isGameOver ? (
-        <div className='flex flex-col items-center gap-4 py-8 animate-in fade-in zoom-in duration-1000 w-full'>
-          <div className='text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-600 italic tracking-tighter'>RESULT</div>
-          <div className='text-3xl font-black text-white'>SCORE: <span className='text-yellow-400'>{scoreText}</span></div>
-          <div className='text-xl font-bold text-white/60'>MAX SHARED COMBO: {roomState?.maxSharedCombo || 0}</div>
-          <button onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) {} onBackToMenu(); }} className='mt-6 px-8 py-3 bg-white/10 hover:bg-white/20 text-white font-black rounded-2xl text-sm transition-colors'>BACK TO LOBBY</button>
-        </div>
-      ) : (
-        <>
-          {(nextSet || isFinalSetAndFinished) && (
-            <div className="w-full flex flex-col items-center mb-6">
-              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden relative mb-3 ring-1 ring-white/10">
-                <div 
-                  className="h-full bg-gradient-to-r from-rose-600 via-orange-500 to-amber-400 transition-all duration-100 ease-linear shadow-[0_0_20px_rgba(244,63,94,0.3)]" 
-                  style={{ width: `${isFinalSetAndFinished ? 100 : Math.max(0, Math.min(100, currentBlockIdx === 0 && currentTime * 1000 < currentSet.timeMs ? (currentTime * 1000 / currentSet.timeMs) * 100 : ((currentTime * 1000 - currentSet.timeMs) / (nextSet!.timeMs - currentSet.timeMs)) * 100))}%` }} 
-                />
+
+        {!isGameOver && (
+          <div className="w-full flex flex-col gap-0">
+            {/* 2. 歌詞モニターエリア (角を丸くせず枠に密着) */}
+            <div className="w-full p-6 min-h-[200px] flex flex-col justify-center relative overflow-hidden bubble-bg bg-white border-b-4 border-white/10">
+               {canSkip && (
+                 <div className="absolute top-3 right-5 animate-bounce z-20">
+                   <div className="px-3 py-1 bg-rose-400 text-white text-[10px] font-black rounded-full shadow-md flex items-center gap-2">
+                     <span>SPACE to Skip</span>
+                     <span className="text-sm">➜</span>
+                   </div>
+                 </div>
+               )}
+
+               <div className="flex flex-col w-full gap-1.5">
+                {currentSet.lines.map((line: any, lIdx: number) => {
+                  const pid = getAssignedPlayerId(line.absLineIdx, playerIds);
+                  const u = roomState?.players?.[pid];
+                  const pColor = u?.color || PLAYER_COLORS[playerIds.indexOf(pid) % PLAYER_COLORS.length];
+                  const iD = u && (u.currentLineIdx === -1 || u.currentLineIdx > line.absLineIdx);
+                  const iS = !(pid === playerId) && u && u.currentLineIdx === line.absLineIdx;
+                  return (
+                    <LineItem key={lIdx} line={line} lineIdx={lIdx} currentLineIdx={currentLineIdx} currentChunkIdx={currentChunkIdx} isEngineReady={isEngineReady && (pid === playerId)} playerColor={pColor} isDone={iD} isSomeoneElseActive={iS} opponentChunkIdx={u?.currentChunkIdx} currentTyping={u?.currentTyping} />
+                  );
+                })}
+                {Array.from({ length: Math.max(0, 4 - currentSet.lines.length) }).map((_, i) => ( <div key={'dummy-' + i} className='py-0.5 px-8 h-[40px]' /> ))}
               </div>
-              {canSkip ? ( 
-                <div className="text-xs font-black text-amber-400 animate-bounce tracking-[0.3em] uppercase bg-amber-400/10 px-6 py-2 rounded-2xl ring-2 ring-amber-400/40 shadow-[0_0_15px_rgba(251,191,36,0.2)]">
-                  ⚡ Press [Space] to Skip to {nextSet ? 'Next Set' : 'Result'} ⚡
-                </div>
-              ) : ( 
-                <div className="text-[10px] font-black text-rose-500/80 tracking-[0.5em] uppercase animate-pulse">
-                  {nextSet ? `Next Set in ${Math.max(0, ((nextSet.timeMs - currentTime * 1000) / 1000)).toFixed(1)}s` : 'Waiting for Video End...'}
-                </div> 
-              )}
             </div>
-          )}
-          <div className='w-full px-2 mb-2 font-mono font-bold text-4xl tracking-widest min-h-[3rem]'>
-            {isEngineReady && ( <><span className='text-white/30'>{(keygraph.key_done() || '').toUpperCase()}</span><span style={{ color: myColor }}>{(keygraph.key_candidate() || '').toUpperCase()}</span></> )}
+
+            {/* 3. 入力インジケーターバー (角を丸くせず、横幅いっぱいに) */}
+            <div className="w-full h-14 bg-rose-400 flex items-center justify-between px-10 relative overflow-hidden border-b-4 border-white/10">
+              <div className="flex flex-col items-start leading-none">
+                <span className="text-[9px] font-black text-rose-100 uppercase italic">Target</span>
+                <span className="text-[10px] font-black text-white italic">{isMe ? 'TYPE!' : 'WAIT'}</span>
+              </div>
+
+              <div className="flex-1 flex items-center justify-center">
+                {isEngineReady && isMe ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-3xl font-black italic tracking-wider text-white drop-shadow-md">
+                      <span className="opacity-30">{(keygraph.key_done() || '').toUpperCase()}</span>
+                      <span>{(keygraph.key_candidate() || '').toUpperCase()}</span>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-rose-200 font-bold uppercase tracking-[0.2em] text-[9px] animate-pulse">Waiting for Turn...</div>
+                )}
+              </div>
+
+              <div className="flex flex-col items-end leading-none">
+                <span className="text-[9px] font-black text-rose-100 uppercase italic text-right">Combo</span>
+                <div key={comboAnimKey} className="text-xl font-black italic text-white combo-pop leading-none">{roomState?.sharedCombo || 0}</div>
+              </div>
+            </div>
+
+            {/* 4. ダッシュボードパネル (横に並べつつ、枠に密着) */}
+            <div className="w-full flex">
+              {/* 左パネル: スコア */}
+              <div className="flex-1 p-6 flex flex-col items-center justify-center bubble-bg bg-white border-r-2 border-white/10">
+                <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Total Score</span>
+                <div className="text-4xl font-black text-zinc-700 tracking-tighter">{scoreText}</div>
+              </div>
+
+              {/* 中央パネル: ビデオ */}
+              <div className="w-[360px] aspect-video bg-black relative group border-r-2 border-white/10">
+                 <div id='youtube-player' className="w-full h-full" />
+              </div>
+
+              {/* 右パネル: 曲情報/メニュー */}
+              <div className="flex-1 p-6 flex flex-col justify-between bubble-bg bg-white">
+                 <div className="flex flex-col">
+                   <span className="text-[9px] font-black text-rose-300 uppercase italic">Playing</span>
+                   <div className="text-xs font-black text-zinc-700 truncate mt-0.5">{mapData.title || 'Untitled'}</div>
+                   <div className="text-[9px] font-bold text-zinc-400 truncate">{mapData.artist || 'Artist'}</div>
+                 </div>
+                 
+                 <div className="flex gap-2 mt-2">
+                    <button 
+                      onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) {} onBackToMenu(); }}
+                      className="flex-1 py-1 bg-rose-400 text-white text-[9px] font-black rounded-full hover:bg-rose-500 shadow-sm"
+                    >
+                      MENU
+                    </button>
+                    <button className="flex-1 py-1 bg-white border border-zinc-100 text-[9px] text-zinc-400 font-black rounded-full">HELP</button>
+                 </div>
+              </div>
+            </div>
+
+            {/* 5. プログレスバー (最下部にフラットに配置) */}
+            <div className="w-full h-2 bg-zinc-200 overflow-hidden relative">
+               <div 
+                 className="h-full bg-gradient-to-r from-rose-400 to-rose-500 transition-all duration-500 ease-out"
+                 style={{ width: `${Math.max(0, Math.min(100, (currentTime / (videoDuration || 1)) * 100))}%` }}
+               />
+            </div>
           </div>
-          <div className='flex justify-between items-center w-full mb-4 px-2 font-black italic text-white'>
-            <div key={comboAnimKey} className='text-3xl transition-transform' style={{ animation: comboAnimKey > 0 ? 'comboScale 0.3s ease-out' : 'none' }}>{(roomState?.sharedCombo || 0) + ' COMBO'}</div>
-            <div className='text-5xl'>{scoreText}</div>
+        )}
+      </div>
+
+      {isGameOver && (
+        <div className='flex flex-col items-center gap-6 py-16 w-full kawaii-card bubble-bg relative overflow-hidden text-center'>
+          <div className='absolute -top-10 -left-10 w-40 h-40 bg-rose-100 rounded-full blur-3xl opacity-50' />
+          <div className='absolute -bottom-10 -right-10 w-40 h-40 bg-purple-100 rounded-full blur-3xl opacity-50' />
+          
+          <div className='text-7xl font-black text-rose-400 italic tracking-tighter drop-shadow-sm line-height-1'>FINISH!</div>
+          <div className='flex flex-col gap-1'>
+            <div className='text-3xl font-black text-zinc-700'>SCORE: <span className='text-rose-400'>{scoreText}</span></div>
+            <div className='text-base font-bold text-zinc-400 uppercase tracking-[0.2em]'>Max Combo: {roomState?.maxSharedCombo || 0}</div>
           </div>
-        </>
-      )}
-      {!isGameOver && currentSet && (
-        <div className='flex flex-col w-full' style={{ minHeight: '16rem' }}>
-          {currentSet.lines.map((line: any, lIdx: number) => {
-            const pid = getAssignedPlayerId(line.absLineIdx, playerIds);
-            const u = roomState?.players?.[pid];
-            const isMeLine = pid === playerId;
-            const pColor = u?.color || PLAYER_COLORS[playerIds.indexOf(pid) % PLAYER_COLORS.length];
-            const iD = u && (u.currentLineIdx === -1 || u.currentLineIdx > line.absLineIdx);
-            const iS = !isMeLine && u && u.currentLineIdx === line.absLineIdx;
-            const iF = u && u.currentLineIdx !== -1 && u.currentLineIdx < line.absLineIdx;
-            const isHostLine = pid === determineHostId(roomState?.players);
-            return (
-              <LineItem key={lIdx} line={line} lineIdx={lIdx} currentLineIdx={currentLineIdx} currentChunkIdx={currentChunkIdx} isEngineReady={isEngineReady && isMeLine} playerColor={pColor} isDone={iD} isSomeoneElseActive={iS} isFuture={iF} pidName={(u?.name || '---') + (isMeLine ? ' (YOU)' : '')} opponentChunkIdx={u?.currentChunkIdx} currentTyping={u?.currentTyping} globalLineIdx={roomState?.globalLineIdx} isHostLine={isHostLine} />
-            );
-          })}
-          {Array.from({ length: Math.max(0, 4 - currentSet.lines.length) }).map((_, i) => ( <div key={'dummy-' + i} className='py-2 px-6 rounded-xl' style={{ minHeight: '4rem' }} /> ))}
+          <button 
+            onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) {} onBackToMenu(); }} 
+            className='kawaii-btn px-16 py-4 text-base mt-8'
+          >
+            BACK TO LOBBY ♥
+          </button>
         </div>
       )}
-      <div className={'mt-8 text-center ' + (isGameOver ? 'hidden' : 'block')}>
-        {!isStarted ? ( <button onClick={() => setRoomStartTime(roomId)} className='px-10 py-4 bg-gradient-to-br from-green-500 to-emerald-700 text-white font-black text-xl rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-transform tracking-widest uppercase'>▶ START</button>
-        ) : ( <div className='flex items-center gap-4 px-6 py-2 glass rounded-full border-white/5 font-premium'><span className='text-[10px] text-gray-500 font-black uppercase'>Sync Active</span><div className='w-2 h-2 rounded-full bg-green-500 animate-pulse' /></div> )}
-      </div>
-      <style>{` @keyframes comboScale { 0% { transform: scale(1.4); color: #fbbf24; } 60% { transform: scale(1.1); } 100% { transform: scale(1); color: inherit; } } `}</style>
+
+      {!isGameOver && !isStarted && (
+        <div className="fixed inset-0 bg-white/80 flex items-center justify-center z-50 backdrop-blur-xl">
+           <button 
+             onClick={() => setRoomStartTime(roomId)} 
+             className='px-24 py-10 bg-white border-8 border-rose-300 text-rose-400 font-black text-5xl rounded-[4rem] shadow-[0_30px_60px_rgba(255,133,161,0.3)] hover:scale-110 active:scale-95 transition-all transform tracking-tight'
+           >
+             GO! ♥
+           </button>
+        </div>
+      )}
     </div>
   );
 };

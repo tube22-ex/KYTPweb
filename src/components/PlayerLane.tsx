@@ -12,74 +12,70 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
   const players = Object.values(roomState.players);
   const hostId = determineHostId(roomState.players);
 
+  const getColorLabel = (color: string) => {
+    switch (color) {
+      case '#ef4444': return '赤';
+      case '#3b82f6': return '青';
+      case '#22c55e': return '緑';
+      case '#eab308': return '黄';
+      default: return '他';
+    }
+  };
+
   return (
-    <div className="w-full flex flex-row justify-center items-stretch gap-3 mb-8">
-      {players.map(p => (
-        <div
-          key={p.id}
-          className={`flex-1 max-w-[220px] glass rounded-2xl flex flex-col transition-all duration-300 overflow-hidden ${
-            p.id === playerId ? 'glow-blue ring-2 ring-blue-500/50 scale-105 z-10' : 'opacity-80'
-          }`}
-        >
-          {/* ★キャラクター立ち絵エリア */}
-          <div
-            className="w-full aspect-[3/4] bg-black flex items-end justify-center relative overflow-hidden"
-            style={{ borderBottom: `2px solid ${p.color}22` }}
-          >
-            {/* 画像未設定時のプレースホルダー */}
-            <div
-              className="absolute inset-0 flex items-center justify-center"
-              style={{ background: `linear-gradient(180deg, #000 60%, ${p.color}33 100%)` }}
-            >
-              <span
-                className="text-5xl font-black opacity-20 select-none"
-                style={{ color: p.color }}
-              >
-                {p.name.charAt(0).toUpperCase()}
-              </span>
-            </div>
-            {/* プレイヤー色ライン（下部） */}
-            <div className="absolute bottom-0 left-0 w-full h-0.5" style={{ backgroundColor: p.color }} />
-          </div>
+    <div className="w-full max-w-5xl mx-auto relative">
+      {/* 舞台エリア (かわいい系) */}
+      <div className="relative w-full aspect-[21/4] overflow-hidden stage-floor-cute group bubble-bg rounded-none">
+        {/* 装飾的な雲やキラキラなどを背景に追加可能 */}
+        <div className="absolute top-4 left-10 w-24 h-8 bg-white/40 rounded-full blur-xl animate-pulse" />
+        <div className="absolute bottom-10 right-20 w-32 h-12 bg-white/30 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '1s' }} />
 
-          {/* カード情報エリア */}
-          <div className="p-3 flex flex-col gap-1.5">
-            {/* 名前 */}
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
-              <span className="font-black text-white truncate font-premium text-sm">{p.name}</span>
-              {p.id === playerId && (
-                <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-[8px] font-black rounded uppercase tracking-tighter ring-1 ring-blue-500/30 flex-shrink-0">You</span>
-              )}
-              {p.id === hostId && (
-                <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 text-[8px] font-black rounded uppercase tracking-tighter ring-1 ring-amber-500/30 flex-shrink-0">Host</span>
-              )}
-            </div>
+        {/* プレイヤー整列 */}
+        <div className="absolute inset-0 flex items-end justify-center px-16 pb-2 gap-12 z-20">
+          {players.map(p => (
+            <div key={p.id} className="flex-1 flex flex-col items-center transition-all duration-500 hover:scale-110">
+              {/* キャラクター（立ち絵風アバター） */}
+              <div className="relative w-14 aspect-square flex items-center justify-center mb-2">
+                <div 
+                  className="w-full h-full flex items-center justify-center rounded-none relative overflow-hidden shadow-lg transform rotate-3 hover:rotate-0 transition-transform"
+                  style={{ 
+                    background: `white`, 
+                    border: `3px solid ${p.color}aa`,
+                    boxShadow: p.id === playerId ? `0 0 20px ${p.color}44` : 'none'
+                  }}
+                >
+                  <span className="text-3xl font-black select-none" style={{ color: p.color }}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </span>
 
-            {/* 進行バー */}
-            <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden ring-1 ring-white/5">
-              <div
-                className="h-full transition-all duration-700 ease-out shadow-[0_0_10px_rgba(255,255,255,0.2)]"
-                style={{
-                  width: `${(p.currentLineIdx / 100) * 100}%`,
-                  backgroundColor: p.color
-                }}
-              />
-            </div>
-
-            {/* コンボ / スコア */}
-            <div className="flex justify-between items-center tabular-nums">
-              <div className="flex gap-2">
-                <span className="text-[9px] font-black text-white/40 uppercase">Combo</span>
-                <span className="text-[9px] font-black text-orange-400">{p.combo} <span className="text-white/20">/</span> {p.maxCombo || 0}</span>
+                  {/* ホスト/YOUタグ (かわいいバッジ風) */}
+                  <div className="absolute top-0.5 right-0.5 flex flex-col gap-0.5 items-end">
+                    {p.id === hostId && (
+                      <div className="bg-amber-400 text-white text-[8px] font-black px-1.5 rounded-full shadow-sm leading-tight border border-white">★</div>
+                    )}
+                    {p.id === playerId && (
+                      <div className="bg-rose-400 text-white text-[8px] font-black px-1.5 rounded-full shadow-sm leading-tight border border-white">♥</div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="text-[10px] font-black text-white/80 font-premium">
-                {p.score?.toLocaleString() || 0} <span className="text-[8px] text-white/30 ml-0.5">pts</span>
+
+              {/* プレイヤー情報ラベル (ぷっくりしたピル形状) */}
+              <div className="flex flex-col items-center w-full gap-1">
+                <div 
+                  className="px-3 py-0.5 rounded-none text-[10px] font-black text-white shadow-sm flex items-center gap-1 leading-none"
+                  style={{ backgroundColor: p.color }}
+                >
+                   {getColorLabel(p.color)}
+                </div>
+                <div className="text-[10px] font-black text-zinc-600 truncate max-w-full tracking-tight">
+                   {p.name}
+                </div>
               </div>
             </div>
-          </div>
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 };

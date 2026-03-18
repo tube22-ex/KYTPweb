@@ -53,6 +53,8 @@ export interface ParseResult {
   lines: ParsedLine[];       // 既存（互換性のため残す）
   displaySets: DisplaySet[]; // 新規追加
   videoId?: string; // YouTube動画ID
+  title?: string;
+  artist?: string;
 }
 
 // ============================================
@@ -313,21 +315,18 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
 
   // メタデータから動画IDを取得 (https://ytyping.net/api/maps/${mapId})
   let videoId = undefined;
+  let title = undefined;
+  let artist = undefined;
   try {
     const metaResponse = await fetch(`https://ytyping.net/api/maps/${mapId}`);
     if (metaResponse.ok) {
       const metaData = await metaResponse.json();
-      console.log('Map Meta Data:', metaData);
-      // APIレスポンスを確認したところ、media.videoId に格納されている
       videoId = metaData.media?.videoId || metaData.media?.youtube_id || metaData.media?.video_id;
-      if (!videoId) {
-        console.warn('videoId not found in media object:', metaData.media);
-      }
-    } else {
-      console.warn('Failed to fetch map metadata:', metaResponse.status);
+      title = metaData.name || metaData.title;
+      artist = metaData.artist?.name || metaData.creator?.name || metaData.artist;
     }
   } catch (err) {
-    console.warn('Failed to fetch videoId from metadata API:', err);
+    console.warn('Failed to fetch map metadata:', err);
   }
 
   // displaySets を生成 ('end' 行は除外して構築)
@@ -349,5 +348,11 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
     }
   }
 
-  return { lines: parsedLines, displaySets, videoId };
+  return { 
+    lines: parsedLines, 
+    displaySets, 
+    videoId,
+    title: typeof title === 'string' ? title : undefined,
+    artist: typeof artist === 'string' ? artist : undefined
+  };
 };
