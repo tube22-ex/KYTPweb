@@ -26,7 +26,8 @@ const LineItem: React.FC<any> = ({
   opponentChunkIdx,
   currentTyping,
   isFuture,
-  globalLineIdx
+  globalLineIdx,
+  isHostLine
 }) => {
   const isActiveLine = lineIdx === currentLineIdx;
   const absLineIdx = line.absLineIdx;
@@ -41,6 +42,9 @@ const LineItem: React.FC<any> = ({
         </span>
         {isGlobalTargetLine && (
           <span className='text-[8px] bg-red-500 text-white px-1 rounded animate-pulse'>TARGET</span>
+        )}
+        {isHostLine && (
+          <span className="px-1 py-0.5 bg-amber-500/20 text-amber-400 text-[8px] font-black rounded uppercase tracking-tighter ring-1 ring-amber-500/30 flex-shrink-0">Host</span>
         )}
       </div>
       
@@ -117,6 +121,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const [isEngineReady, setIsEngineReady] = useState(false);
   const [comboAnimKey, setComboAnimKey] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [playerState, setPlayerState] = useState<number>(-1); // YT.PlayerState
 
   const playerRef = useRef<any>(null);
   const instanceIdRef = useRef<number>(0);
@@ -189,6 +194,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             });
           },
           onStateChange: (e: any) => {
+            setPlayerState(e.data);
             if (e.data === 0) { // YT.PlayerState.ENDED
               setIsGameOver(true);
             }
@@ -298,7 +304,9 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const isNearNextSet = nextSet && (currentTime * 1000 > nextSet.timeMs - 3000);
   const isInitialGap = (currentBlockIdx === 0 && (currentTime * 1000 < (currentSet?.timeMs ?? 0) - 3000));
   const isFinalSetAndFinished = (currentBlockIdx + 1 === mapData.displaySets.length) && allFinished && !isGameOver;
-  const canSkip = isHost && (allFinished || isInitialGap) && (nextSet || isFinalSetAndFinished) && !isGameOver && !isNearNextSet;
+  // 動画が再生中(1)または一時停止(2)の場合のみスキップを許可する
+  const isVideoActive = playerState === 1 || playerState === 2;
+  const canSkip = isHost && isVideoActive && (allFinished || isInitialGap) && (nextSet || isFinalSetAndFinished) && !isGameOver && !isNearNextSet;
 
   useEffect(() => {
     if (!isStarted || isEngineReady || isGameOver || !currentSet || !currentLine || !isMe) return;
@@ -464,7 +472,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const myColor = roomState?.players?.[playerId]?.color || PLAYER_COLORS[myPos % 4];
 
   return (
-    <div className='flex flex-col items-center mt-2 w-full max-w-4xl glass p-8 rounded-3xl relative overflow-hidden font-premium'>
+    <div className='flex flex-col items-center mt-2 w-full max-w-4xl glass p-8 rounded-3xl relative overflow-hidden font-premium mx-auto'>
       <div className='absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500' />
       <div className={'mb-6 rounded-2xl overflow-hidden bg-black flex items-center justify-center ring-4 ring-white/5 ' + (isGameOver ? 'hidden' : 'flex')} style={{ width: '426px', height: '240px' }}><div id='youtube-player' /></div>
       {isStarted && !isGameOver && (
@@ -485,21 +493,21 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         </div>
       ) : (
         <>
-          {nextSet && (
+          {(nextSet || isFinalSetAndFinished) && (
             <div className="w-full flex flex-col items-center mb-6">
               <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden relative mb-3 ring-1 ring-white/10">
                 <div 
                   className="h-full bg-gradient-to-r from-rose-600 via-orange-500 to-amber-400 transition-all duration-100 ease-linear shadow-[0_0_20px_rgba(244,63,94,0.3)]" 
-                  style={{ width: `${Math.max(0, Math.min(100, currentBlockIdx === 0 && currentTime * 1000 < currentSet.timeMs ? (currentTime * 1000 / currentSet.timeMs) * 100 : ((currentTime * 1000 - currentSet.timeMs) / (nextSet.timeMs - currentSet.timeMs)) * 100))}%` }} 
+                  style={{ width: `${isFinalSetAndFinished ? 100 : Math.max(0, Math.min(100, currentBlockIdx === 0 && currentTime * 1000 < currentSet.timeMs ? (currentTime * 1000 / currentSet.timeMs) * 100 : ((currentTime * 1000 - currentSet.timeMs) / (nextSet!.timeMs - currentSet.timeMs)) * 100))}%` }} 
                 />
               </div>
               {canSkip ? ( 
                 <div className="text-xs font-black text-amber-400 animate-bounce tracking-[0.3em] uppercase bg-amber-400/10 px-6 py-2 rounded-2xl ring-2 ring-amber-400/40 shadow-[0_0_15px_rgba(251,191,36,0.2)]">
-                  ⚡ Press [Space] to Skip to Next Set ⚡
+                  ⚡ Press [Space] to Skip to {nextSet ? 'Next Set' : 'Result'} ⚡
                 </div>
               ) : ( 
                 <div className="text-[10px] font-black text-rose-500/80 tracking-[0.5em] uppercase animate-pulse">
-                  Next Set in {Math.max(0, ((nextSet.timeMs - currentTime * 1000) / 1000)).toFixed(1)}s
+                  {nextSet ? `Next Set in ${Math.max(0, ((nextSet.timeMs - currentTime * 1000) / 1000)).toFixed(1)}s` : 'Waiting for Video End...'}
                 </div> 
               )}
             </div>
@@ -523,8 +531,9 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             const iD = u && (u.currentLineIdx === -1 || u.currentLineIdx > line.absLineIdx);
             const iS = !isMeLine && u && u.currentLineIdx === line.absLineIdx;
             const iF = u && u.currentLineIdx !== -1 && u.currentLineIdx < line.absLineIdx;
+            const isHostLine = pid === determineHostId(roomState?.players);
             return (
-              <LineItem key={lIdx} line={line} lineIdx={lIdx} currentLineIdx={currentLineIdx} currentChunkIdx={currentChunkIdx} isEngineReady={isEngineReady && isMeLine} playerColor={pColor} isDone={iD} isSomeoneElseActive={iS} isFuture={iF} pidName={(u?.name || '---') + (isMeLine ? ' (YOU)' : '')} opponentChunkIdx={u?.currentChunkIdx} currentTyping={u?.currentTyping} globalLineIdx={roomState?.globalLineIdx} />
+              <LineItem key={lIdx} line={line} lineIdx={lIdx} currentLineIdx={currentLineIdx} currentChunkIdx={currentChunkIdx} isEngineReady={isEngineReady && isMeLine} playerColor={pColor} isDone={iD} isSomeoneElseActive={iS} isFuture={iF} pidName={(u?.name || '---') + (isMeLine ? ' (YOU)' : '')} opponentChunkIdx={u?.currentChunkIdx} currentTyping={u?.currentTyping} globalLineIdx={roomState?.globalLineIdx} isHostLine={isHostLine} />
             );
           })}
           {Array.from({ length: Math.max(0, 4 - currentSet.lines.length) }).map((_, i) => ( <div key={'dummy-' + i} className='py-2 px-6 rounded-xl' style={{ minHeight: '4rem' }} /> ))}

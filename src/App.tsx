@@ -3,7 +3,7 @@ import { MapLoader } from './components/MapLoader';
 import { TypingArea } from './components/TypingArea';
 import { PlayerLane } from './components/PlayerLane';
 import { ParseResult, fetchMapData } from './services/api';
-import { joinRoom, subscribeToRoom, RoomState, setRoomMapId, PLAYER_COLORS, getRoomState, resetRoom, leaveRoom, determineHostId } from './services/sync';
+import { joinRoom, subscribeToRoom, RoomState, setRoomMapId, PLAYER_COLORS, getRoomState, resetRoom, leaveRoom, determineHostId, deleteRoomIfEmpty } from './services/sync';
 
 function App() {
   const [mapData, setMapData] = useState<ParseResult | null>(null);
@@ -23,6 +23,9 @@ function App() {
     }
     try {
       console.log('Attempting to join room...');
+      // 部屋が存在するがプレイヤーが0人の場合はクリーンアップする
+      await deleteRoomIfEmpty(roomId);
+
       const currentState = await getRoomState(roomId);
       const existingCount = Object.keys(currentState?.players ?? {}).length;
       const color = PLAYER_COLORS[existingCount % PLAYER_COLORS.length];
@@ -148,7 +151,7 @@ function App() {
           </div>
         </div>
       ) : (
-        <div className="w-full max-w-5xl flex flex-col items-center relative z-10">
+        <div className="w-full max-w-5xl flex flex-col items-center relative z-10 mx-auto">
           <div className="glass px-6 py-3 rounded-2xl mb-8 flex items-center gap-4 border-white/5">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Room</span>

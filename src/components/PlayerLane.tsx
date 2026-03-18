@@ -1,5 +1,5 @@
 import React from 'react';
-import { RoomState } from '../services/sync';
+import { RoomState, determineHostId } from '../services/sync';
 
 interface PlayerLaneProps {
   roomState: RoomState | null;
@@ -10,6 +10,7 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
   if (!roomState || !roomState.players) return null;
 
   const players = Object.values(roomState.players);
+  const hostId = determineHostId(roomState.players);
 
   return (
     <div className="w-full flex flex-row justify-center items-stretch gap-3 mb-8">
@@ -49,6 +50,9 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
               <span className="font-black text-white truncate font-premium text-sm">{p.name}</span>
               {p.id === playerId && (
                 <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-[8px] font-black rounded uppercase tracking-tighter ring-1 ring-blue-500/30 flex-shrink-0">You</span>
+              )}
+              {p.id === hostId && (
+                <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 text-[8px] font-black rounded uppercase tracking-tighter ring-1 ring-amber-500/30 flex-shrink-0">Host</span>
               )}
             </div>
 

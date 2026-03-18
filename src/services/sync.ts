@@ -114,21 +114,27 @@ export const setPlayerFinished = async (roomId: string, playerId: string) => {
 };
 
 /**
+ * 部屋が空（またはプレイヤー情報の階層がない）なら部屋ごと削除します。
+ */
+export const deleteRoomIfEmpty = async (roomId: string) => {
+  const playersRef = ref(db, `rooms/${roomId}/players`);
+  const snapshot = await get(playersRef);
+  if (!snapshot.exists() || !snapshot.val() || Object.keys(snapshot.val()).length === 0) {
+    await remove(ref(db, `rooms/${roomId}`));
+    return true;
+  }
+  return false;
+};
+
+/**
  * 部屋から退出します。
  */
 export const leaveRoom = async (roomId: string, playerId: string) => {
   const playerRef = ref(db, `rooms/${roomId}/players/${playerId}`);
-  const roomRef = ref(db, `rooms/${roomId}`);
-  
   // プレイヤーを削除
   await remove(playerRef);
-  
-  // 部屋が空かチェック
-  const snapshot = await get(ref(db, `rooms/${roomId}/players`));
-  if (!snapshot.exists() || !snapshot.val()) {
-    // 誰もいなければ部屋ごと削除
-    await remove(roomRef);
-  }
+  // 部屋が空かチェックして削除
+  await deleteRoomIfEmpty(roomId);
 };
 /**
  * 部屋を初期状態（ロビー）に戻します。
