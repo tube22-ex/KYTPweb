@@ -1,4 +1,4 @@
-import { ref, onValue, set, update, serverTimestamp, get } from "firebase/database";
+import { ref, onValue, set, update, serverTimestamp, get, onDisconnect, remove } from "firebase/database";
 import { db } from "../configs/firebase";
 
 export interface PlayerState {
@@ -16,6 +16,7 @@ export interface PlayerState {
   isFinished: boolean;
   currentTyping: string;  // 追加: 入力済みひらがな
   currentWord: string;    // 追加: 現在入力中の単語全体
+  joinedAt: number;      // 追加: 入室時刻（ホスト判定用）
 }
 
 export const PLAYER_COLORS = [
@@ -34,6 +35,7 @@ export interface RoomState {
   maxSharedCombo: number;   // チーム最大合計コンボ
   globalLineIdx: number;    // 現在入力対象の絶対行番号
   globalChunkIdx: number;   // 現在入力対象のチャンク番号
+  playbackTime: number;     // 追加: 現在の再生時間（秒）
   players: Record<string, PlayerState>;
 }
 
@@ -59,8 +61,11 @@ export const joinRoom = async (roomId: string, playerId: string, playerName: str
       isReady: false,
       isFinished: false,
       currentTyping: '',
-      currentWord: ''
+      currentWord: '',
+      joinedAt: serverTimestamp() as any // Firebaseサーバー時刻
     });
+    // 接続が切れたらプレイヤー情報を自動削除
+    onDisconnect(playerRef).remove();
     console.log('joinRoom successfully completed');
   } catch (error) {
     console.error('Error in joinRoom:', error);
@@ -109,6 +114,40 @@ export const setPlayerFinished = async (roomId: string, playerId: string) => {
 };
 
 /**
+ * 部屋から退出します。
+ */
+export const leaveRoom = async (roomId: string, playerId: string) => {
+  const playerRef = ref(db, `rooms/${roomId}/players/${playerId}`);
+  const roomRef = ref(db, `rooms/${roomId}`);
+  
+  // プレイヤーを削除
+  await remove(playerRef);
+  
+  // 部屋が空かチェック
+  const snapshot = await get(ref(db, `rooms/${roomId}/players`));
+  if (!snapshot.exists() || !snapshot.val()) {
+    // 誰もいなければ部屋ごと削除
+    await remove(roomRef);
+  }
+};
+/**
+ * 部屋を初期状態（ロビー）に戻します。
+ */
+export const resetRoom = async (roomId: string) => {
+  const roomRef = ref(db, `rooms/${roomId}`);
+  await update(roomRef, {
+    status: 'idle',
+    startTime: null,
+    sharedScore: 0,
+    sharedCombo: 0,
+    maxSharedCombo: 0,
+    globalLineIdx: 0,
+    globalChunkIdx: 0,
+    mapId: null
+  });
+};
+
+/**
  * 曲IDを変更します。（ホスト用）
  */
 export const setRoomMapId = async (roomId: string, mapId: string) => {
@@ -133,7 +172,8 @@ export const setRoomStartTime = async (roomId: string) => {
     sharedCombo: 0,
     maxSharedCombo: 0,
     globalLineIdx: 0,
-    globalChunkIdx: 0
+    globalChunkIdx: 0,
+    playbackTime: 0
   });
 };
 
@@ -166,6 +206,16 @@ export const updateGlobalProgress = async (roomId: string, lineIdx: number, chun
   await update(roomRef, {
     globalLineIdx: lineIdx,
     globalChunkIdx: chunkIdx
+  });
+};
+
+/**
+ * 再生時間を更新します。（ホスト用）
+ */
+export const updateRoomPlayback = async (roomId: string, time: number) => {
+  const roomRef = ref(db, `rooms/${roomId}`);
+  await update(roomRef, {
+    playbackTime: time
   });
 };
 
@@ -212,4 +262,21 @@ export const getServerTimeOffset = (): Promise<number> => {
       resolve(snap.val() || 0);
     }, { onlyOnce: true });
   });
+};
+
+/**
+ * 部屋のホスト（最も早く入室した人）を取得します。
+ */
+export const determineHostId = (players: Record<string, PlayerState> | undefined): string | null => {
+  if (!players) return null;
+  const pList = Object.values(players);
+  if (pList.length === 0) return null;
+  // joinedAtでソート（欠落時は降格）、安定のためIDでもソート
+  const sorted = [...pList].sort((a, b) => {
+    const tA = a.joinedAt || Infinity;
+    const tB = b.joinedAt || Infinity;
+    if (tA !== tB) return tA - tB;
+    return a.id.localeCompare(b.id);
+  });
+  return sorted[0].id;
 };

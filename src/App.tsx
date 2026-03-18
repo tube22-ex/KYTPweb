@@ -3,7 +3,7 @@ import { MapLoader } from './components/MapLoader';
 import { TypingArea } from './components/TypingArea';
 import { PlayerLane } from './components/PlayerLane';
 import { ParseResult, fetchMapData } from './services/api';
-import { joinRoom, subscribeToRoom, RoomState, setRoomMapId, PLAYER_COLORS, getRoomState } from './services/sync';
+import { joinRoom, subscribeToRoom, RoomState, setRoomMapId, PLAYER_COLORS, getRoomState, resetRoom, leaveRoom, determineHostId } from './services/sync';
 
 function App() {
   const [mapData, setMapData] = useState<ParseResult | null>(null);
@@ -65,9 +65,25 @@ function App() {
   };
 
   // リザルト画面から曲選択に戻る
-  const handleBackToMenu = () => {
+  const handleBackToMenu = async () => {
+    // 自身がホストなら部屋をリセット（idle状態に戻す）
+    const isHost = determineHostId(roomState?.players) === playerId;
+    if (isHost && roomId) {
+      await resetRoom(roomId);
+    }
+
     setMapData(null);
+    // Note: leaveRoomは呼び出さず、inRoom/roomIdも維持することでロビー（選曲画面）に戻る
   };
+
+  // アンマウント時（ブラウザを閉じる直前など）のクリーンアップ
+  useEffect(() => {
+    return () => {
+      if (roomId && playerId) {
+        leaveRoom(roomId, playerId);
+      }
+    };
+  }, [roomId, playerId]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#0f172a] text-white p-6 overflow-x-hidden selection:bg-blue-500/30">
@@ -145,7 +161,8 @@ function App() {
             </div>
           </div>
 
-          <PlayerLane roomState={roomState} playerId={playerId} />
+          {/* 楽曲選択・ロード前のみアバターを表示（プレイ中はTypingArea内で表示） */}
+          {!mapData && <PlayerLane roomState={roomState} playerId={playerId} />}
 
           {!mapData && (
             <div className="w-full max-w-2xl transform transition-all animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -156,6 +173,7 @@ function App() {
           {mapData && (
             <div className="w-full transform transition-all animate-in fade-in zoom-in-95 duration-700">
               <TypingArea
+                key={roomState?.mapId || 'none'}
                 mapData={mapData}
                 roomId={roomId}
                 playerId={playerId}

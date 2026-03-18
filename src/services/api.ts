@@ -28,6 +28,7 @@ export interface ParsedLine {
   words: string[]; // ひらがなをスペースで分割した配列
   rawWord: string; // 元のword文字列
   isEnd: boolean; // 終了フラグ
+  absLineIdx: number; // 絶対行番号
 }
 
 export interface Chunk {
@@ -229,15 +230,28 @@ function buildDisplayLines(chunks: Chunk[], lineMaxChars = 14): DisplayLine[] {
   const lines: DisplayLine[] = [];
   let current: DisplayLine | null = null;
   let absCounter = 0;
+  let linesInCurrentOriginal = 0; // 現在の元データ行が何個の表示行に分割されたか
 
   for (const chunk of chunks) {
+    if (chunk.isLineHead) {
+      linesInCurrentOriginal = 0;
+    }
+
     const currentLen = current?.chunks.reduce((s, c) => s + c.text.length, 0) ?? 0;
     const wouldOverflow = currentLen + chunk.text.length > lineMaxChars;
-    const shouldBreak = wouldOverflow || (chunk.isLineHead && current !== null && current.chunks.length > 0);
+    // 新しい行を開始すべきか
+    const isNewOriginal = chunk.isLineHead;
+    const shouldBreak = (wouldOverflow || isNewOriginal) && current !== null && current.chunks.length > 0;
 
     if (!current || shouldBreak) {
-      current = { timeMs: chunk.timeMs, chunks: [], absLineIdx: absCounter++ };
-      lines.push(current);
+      // すでに4行ある場合は、5行目を作らずに4行目に追加し続ける（文字数制限を突破）
+      if (current && !isNewOriginal && linesInCurrentOriginal >= 4) {
+        // 新しい行を作らず、既存のcurrent(4行目)にマージされる
+      } else {
+        current = { timeMs: chunk.timeMs, chunks: [], absLineIdx: absCounter++ };
+        lines.push(current);
+        linesInCurrentOriginal++;
+      }
     }
     current.chunks.push(chunk);
   }
@@ -245,21 +259,33 @@ function buildDisplayLines(chunks: Chunk[], lineMaxChars = 14): DisplayLine[] {
 }
 
 // ⑤ DisplayLine配列 → DisplaySet配列
-function buildDisplaySets(lines: DisplayLine[], setMaxLines = 4): DisplaySet[] {
+function buildDisplaySets(allLines: DisplayLine[], setMaxLines = 4): DisplaySet[] {
   const sets: DisplaySet[] = [];
-  let current: DisplaySet | null = null;
+  
+  // まず、DisplayLineを「元の歌詞の行（absLineIdx）」ごとにグループ化する
+  const groups: DisplayLine[][] = [];
+  allLines.forEach(line => {
+    const originIdx = line.chunks[0].absLineIdx;
+    let group = groups.find(g => g[0].chunks[0].absLineIdx === originIdx);
+    if (!group) {
+      group = [];
+      groups.push(group);
+    }
+    group.push(line);
+  });
 
-  for (const line of lines) {
-    const isNewOrigin = line.chunks[0]?.isLineHead === true;
-    const isFull = (current?.lines.length ?? 0) >= setMaxLines;
+  let currentSet: DisplaySet | null = null;
 
-    if (!current || isFull || isNewOrigin) {
-      // セットが空、満杯、または新しい歌詞の開始点なら新セット
-      current = { timeMs: line.timeMs, lines: [] };
-      sets.push(current);
+  for (const group of groups) {
+    // このグループ（1つの元歌詞行）を現在のセットに追加すると overflow するか？
+    const willOverflow = currentSet && (currentSet.lines.length + group.length > setMaxLines);
+
+    if (!currentSet || willOverflow) {
+      currentSet = { timeMs: group[0].timeMs, lines: [] };
+      sets.push(currentSet);
     }
 
-    current.lines.push(line);
+    group.forEach(line => currentSet?.lines.push(line));
   }
 
   return sets;
@@ -275,12 +301,13 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
   const data: YTypingLineRaw[] = await response.json();
 
   const parsedLines: ParsedLine[] = await Promise.all(
-    data.map(async line => ({
+    data.map(async (line, index) => ({
       timeMs: parseFloat(line.time) * 1000,
       lyrics: line.lyrics,
       words: await splitYomi(line.lyrics, line.word),
       rawWord: line.word,
-      isEnd: line.lyrics === 'end' && line.word === ''
+      isEnd: (line.lyrics === 'end' && line.word === '') || line.lyrics === 'end',
+      absLineIdx: index
     }))
   );
 
