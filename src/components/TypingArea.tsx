@@ -30,9 +30,12 @@ const LineItem: React.FC<any> = ({
   currentTyping,
   currentWord,
   isFuture,
-  currentBlockIdx
+  currentBlockIdx,
+  globalLineIdx
 }) => {
   const isActiveLine = lineIdx === currentLineIdx;
+  const absLineIdx = line.absLineIdx; // 絶対行番号を使用
+  const isGlobalTargetLine = absLineIdx === globalLineIdx;
   const uLineIdx = currentBlockIdx * 4 + lineIdx;
 
   return (
@@ -42,6 +45,9 @@ const LineItem: React.FC<any> = ({
         <span className='text-[9px] font-black uppercase' style={{ color: playerColor }}>
           {pidName}
         </span>
+        {isGlobalTargetLine && (
+          <span className='text-[8px] bg-red-500 text-white px-1 rounded animate-pulse'>TARGET</span>
+        )}
       </div>
       
       <div className='text-3xl font-black mb-1 leading-snug font-premium flex flex-wrap'>
@@ -241,9 +247,9 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const currentSet = mapData.displaySets?.[currentBlockIdx];
   const currentLine = currentSet?.lines?.[currentLineIdx];
   
-  // 修正2: 自分の担当行かどうかの判定 (セット内インデックスを使用)
-  const isMine = (lineIdxInSet: number): boolean => (lineIdxInSet % numPlayers) === myPos;
-  const isMe = currentLine ? isMine(currentLineIdx) : false;
+  // 修正2: 自分の担当行かどうかの判定 (絶対行インデックスを使用)
+  const isMine = React.useCallback((absLineIdx: number): boolean => (absLineIdx % numPlayers) === myPos, [numPlayers, myPos]);
+  const isMe = currentLine ? isMine(currentLine.absLineIdx) : false;
 
   // =====================
   // ブロック進行タイマー (displaySetsベース)
@@ -363,22 +369,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       const currentChunk = currentLine?.chunks?.[currentChunkIdx];
       if (!currentChunk) return;
 
-      // グローバルな進行度チェック
-      const globalLine = roomState?.globalLineIdx ?? 0;
-      const globalChunk = roomState?.globalChunkIdx ?? 0;
-      const myAbsLine = currentLine.absLineIdx;
-      const myChunkIdx = currentChunkIdx;
-
-      // 順序チェック: 現在の自分が打とうとしている場所が
-      // 部屋全体のターゲットより先なら、コンボを強制リセット（飛ばし打ち）
-      const isAhead = (myAbsLine > globalLine) || (myAbsLine === globalLine && myChunkIdx > globalChunk);
-      const isCurrentTarget = (myAbsLine === globalLine && myChunkIdx === globalChunk);
-
-      if (isAhead) {
-        if (roomState?.sharedCombo && roomState?.sharedCombo > 0) {
-          updateSharedCombo(roomId, 0, roomState.maxSharedCombo || 0);
-        }
-      }
+      // 順序判定: 自分の番でない時に打鍵してもリセットしない（ため打ち許可）
+      // ただし、チャンクスキップ等の順序違反は現状考慮していない（キーグラフの構造上スキップは困難）
 
       if (keygraph.next(e.key.toLowerCase())) {
         try { 
@@ -406,6 +398,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         // チャンクが終了したら次へ
         if (keygraph.is_finished()) {
           // ★共有コンボ加算 (チャンク単位)
+          const globalLine = roomState?.globalLineIdx ?? 0;
+          const globalChunk = roomState?.globalChunkIdx ?? 0;
+          const isCurrentTarget = (currentLine.absLineIdx === globalLine && currentChunkIdx === globalChunk);
+
           if (isCurrentTarget) {
             const nextCombo = (roomState?.sharedCombo || 0) + 1;
             const nextMax = Math.max(roomState?.maxSharedCombo || 0, nextCombo);
@@ -455,6 +451,53 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
   }, [isStarted, isEngineReady, isMe, currentLine, currentChunkIdx, roomState, roomId, currentBlockIdx, currentLineIdx, mapData.displaySets, numPlayers, myPos]);
+
+  // ★「ため打ち（バッファリング）」キャッチアップ用
+  useEffect(() => {
+    if (!isStarted || isGameOver || !roomState) return;
+
+    const globalLine = roomState.globalLineIdx ?? 0;
+    const globalChunk = roomState.globalChunkIdx ?? 0;
+
+    // もし現在の部屋ターゲットが「自分」で、かつ自分は既にそこを打ち終わっている場合
+    // (buffered), 自動的にターゲットを進める
+    if (isMine(globalLine)) {
+      const myAbsLine = currentLine?.absLineIdx ?? (currentBlockIdx * 4 + currentLineIdx);
+      const isFinishedByMe = (myAbsLine > globalLine) || (myAbsLine === globalLine && currentChunkIdx > globalChunk);
+
+      if (isFinishedByMe) {
+        // 現在のターゲットとなるはずだった行・チャンク情報を取得
+        // (注: currentLineは自分の場所なので、globalLineのものとは限らない)
+        // ここでは、単純に combo +1 して進める
+        const nextCombo = (roomState.sharedCombo || 0) + 1;
+        const nextMax = Math.max(roomState.maxSharedCombo || 0, nextCombo);
+        updateSharedCombo(roomId, nextCombo, nextMax);
+
+        // 次のターゲットを計算
+        // displaySets から現在のターゲット行を探して、チャンク数を取得する
+        let targetLineObj = null;
+        for (const set of mapData.displaySets) {
+          for (const line of set.lines) {
+            if (line.absLineIdx === globalLine) {
+              targetLineObj = line;
+              break;
+            }
+          }
+          if (targetLineObj) break;
+        }
+
+        if (targetLineObj) {
+          let nextGlobalLine = globalLine;
+          let nextGlobalChunk = globalChunk + 1;
+          if (nextGlobalChunk >= targetLineObj.chunks.length) {
+            nextGlobalLine++;
+            nextGlobalChunk = 0;
+          }
+          updateGlobalProgress(roomId, nextGlobalLine, nextGlobalChunk);
+        }
+      }
+    }
+  }, [roomState?.globalLineIdx, roomState?.globalChunkIdx, currentLineIdx, currentChunkIdx, isMine]);
 
   // =====================
   // 進捗同期 (ブロック番号 + 行番号をシリアル化して送信)
@@ -574,6 +617,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 currentTyping={u?.currentTyping}
                 currentWord={u?.currentWord}
                 currentBlockIdx={currentBlockIdx}
+                globalLineIdx={roomState?.globalLineIdx}
               />
             );
           })}
