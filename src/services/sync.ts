@@ -1,4 +1,4 @@
-import { ref, onValue, set, update, serverTimestamp } from "firebase/database";
+import { ref, onValue, set, update, serverTimestamp, get } from "firebase/database";
 import { db } from "../configs/firebase";
 
 export interface PlayerState {
@@ -7,11 +7,15 @@ export interface PlayerState {
   color: string;
   currentLineIdx: number;
   currentWordIdx: number;
+  currentChunkIdx: number;
+  chunkProgress: number;
   combo: number;
   maxCombo: number;
   score: number;
   isReady: boolean;
   isFinished: boolean;
+  currentTyping: string;  // 追加: 入力済みひらがな
+  currentWord: string;    // 追加: 現在入力中の単語全体
 }
 
 export const PLAYER_COLORS = [
@@ -26,6 +30,10 @@ export interface RoomState {
   startTime: number | null;
   status: 'idle' | 'playing' | 'finished';
   sharedScore: number;
+  sharedCombo: number;      // チーム合計コンボ（ブロック単位）
+  maxSharedCombo: number;   // チーム最大合計コンボ
+  globalLineIdx: number;    // 現在入力対象の絶対行番号
+  globalChunkIdx: number;   // 現在入力対象のチャンク番号
   players: Record<string, PlayerState>;
 }
 
@@ -43,11 +51,15 @@ export const joinRoom = async (roomId: string, playerId: string, playerName: str
       color,
       currentLineIdx: 0,
       currentWordIdx: 0,
+      currentChunkIdx: 0,
+      chunkProgress: 0,
       combo: 0,
       maxCombo: 0,
       score: 0,
       isReady: false,
-      isFinished: false
+      isFinished: false,
+      currentTyping: '',
+      currentWord: ''
     });
     console.log('joinRoom successfully completed');
   } catch (error) {
@@ -59,14 +71,30 @@ export const joinRoom = async (roomId: string, playerId: string, playerName: str
 /**
  * 自分の打鍵進捗を送信します。
  */
-export const updatePlayerProgress = async (roomId: string, playerId: string, lineIdx: number, wordIdx: number, combo: number, maxCombo: number, score: number) => {
+export const updatePlayerProgress = async (
+  roomId: string, 
+  playerId: string, 
+  lineIdx: number, 
+  wordIdx: number, 
+  combo: number, 
+  maxCombo: number, 
+  score: number, 
+  currentChunkIdx?: number, 
+  chunkProgress?: number,
+  currentTyping?: string,
+  currentWord?: string
+) => {
   const playerRef = ref(db, `rooms/${roomId}/players/${playerId}`);
   await update(playerRef, {
     currentLineIdx: lineIdx,
     currentWordIdx: wordIdx,
+    currentChunkIdx: currentChunkIdx ?? 0,
+    chunkProgress: chunkProgress ?? 0,
     combo: combo,
     maxCombo: maxCombo,
-    score: score
+    score: score,
+    currentTyping: currentTyping ?? '',
+    currentWord: currentWord ?? ''
   });
 };
 
@@ -101,7 +129,11 @@ export const setRoomStartTime = async (roomId: string) => {
   await update(roomRef, {
     startTime: serverTimestamp(),
     status: 'playing',
-    sharedScore: 0
+    sharedScore: 0,
+    sharedCombo: 0,
+    maxSharedCombo: 0,
+    globalLineIdx: 0,
+    globalChunkIdx: 0
   });
 };
 
@@ -110,16 +142,30 @@ export const setRoomStartTime = async (roomId: string) => {
  */
 export const incrementSharedScore = async (roomId: string, amount: number) => {
   const roomRef = ref(db, `rooms/${roomId}`);
-  // Firebaseのトランザクションは使用せず、シンプルな加算（厳密な整合性より速度優先の場合）
-  // ただし、並列を考慮するなら本来はトランザクションやincrement演算子（Firestore等）
-  // RTDBの場合もupdateで既存値を取得せずに送ることはできないので、基本はクライアント加算
-  // ここでは各クライアントが自分の10点を加算してupdateする形にする
-  // playersのscoreも維持しつつ、roomのsharedScoreも更新する
-  // 実際には roomStateが引数にないので、呼び出し側で現在のスコアに足して送るか、
-  // updateで`${amount}`のようなことはできないので、直接値をセットする
-  // 今回はRoomStateを購読しているはずなので、ローカルで計算後にこの関数を呼ぶ
   await update(roomRef, {
     sharedScore: amount
+  });
+};
+
+/**
+ * 共有コンボを更新します。
+ */
+export const updateSharedCombo = async (roomId: string, combo: number, maxCombo: number) => {
+  const roomRef = ref(db, `rooms/${roomId}`);
+  await update(roomRef, {
+    sharedCombo: combo,
+    maxSharedCombo: maxCombo
+  });
+};
+
+/**
+ * 部屋全体のタイピング進捗（現在どのチャンクを打つべきか）を更新します。
+ */
+export const updateGlobalProgress = async (roomId: string, lineIdx: number, chunkIdx: number) => {
+  const roomRef = ref(db, `rooms/${roomId}`);
+  await update(roomRef, {
+    globalLineIdx: lineIdx,
+    globalChunkIdx: chunkIdx
   });
 };
 
@@ -131,6 +177,15 @@ export const setRoomStatus = async (roomId: string, status: 'idle' | 'playing' |
   await update(roomRef, {
     status: status
   });
+};
+
+/**
+ * 部屋の状態を1回だけ取得します。
+ */
+export const getRoomState = async (roomId: string): Promise<RoomState | null> => {
+  const roomRef = ref(db, `rooms/${roomId}`);
+  const snapshot = await get(roomRef);
+  return snapshot.exists() ? (snapshot.val() as RoomState) : null;
 };
 
 /**

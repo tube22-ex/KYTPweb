@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { ParseResult } from '../services/api';
 import keygraph from '../utils/keygraph';
 import { sound, miss_sound } from '../utils/sound';
-import { updatePlayerProgress, RoomState, setRoomStartTime, getServerTimeOffset, PLAYER_COLORS, incrementSharedScore } from '../services/sync';
+import { updatePlayerProgress, RoomState, setRoomStartTime, getServerTimeOffset, PLAYER_COLORS, incrementSharedScore, updateSharedCombo, updateGlobalProgress } from '../services/sync';
 
 interface Props {
   mapData: ParseResult;
@@ -16,8 +16,24 @@ interface Props {
 // ============================
 // LineItem: 1行の表示
 // ============================
-const LineItem: React.FC<any> = ({ line, lineIdx, currentLineIdx, currentChunkIdx, isEngineReady, playerColor, isDone, isSomeoneElseActive, pidName }) => {
+const LineItem: React.FC<any> = ({ 
+  line, 
+  lineIdx, 
+  currentLineIdx, 
+  currentChunkIdx, 
+  isEngineReady, 
+  playerColor, 
+  isDone, 
+  isSomeoneElseActive, 
+  pidName,
+  opponentChunkIdx,
+  currentTyping,
+  currentWord,
+  isFuture,
+  currentBlockIdx
+}) => {
   const isActiveLine = lineIdx === currentLineIdx;
+  const uLineIdx = currentBlockIdx * 4 + lineIdx;
 
   return (
     <div className={'py-2 px-6 rounded-xl border border-transparent transition-colors duration-300 ' + (isActiveLine ? 'bg-white/10 border-white/20' : '')}>
@@ -30,37 +46,97 @@ const LineItem: React.FC<any> = ({ line, lineIdx, currentLineIdx, currentChunkId
       
       <div className='text-3xl font-black mb-1 leading-snug font-premium flex flex-wrap'>
         {line.chunks.map((chunk: any, i: number) => {
-          const isActiveChunk = isEngineReady && isActiveLine && i === currentChunkIdx;
-          const isChunkDone = lineIdx < currentLineIdx || (isActiveLine && i < currentChunkIdx);
+          // 自分がアクティブな場合
+          if (isEngineReady && isActiveLine) {
+            const isActiveChunk = i === currentChunkIdx;
+            const isChunkDone = i < currentChunkIdx;
 
-          let content;
-          if (isActiveChunk) {
-            const done = keygraph.seq_done() || '';
-            const rest = keygraph.seq_candidates() || '';
-            content = (
-              <>
-                <span className='text-white/30'>{done}</span>
-                <span style={{ color: playerColor }}>{rest.slice(0, 1)}</span>
-                <span className='text-white/40'>{rest.slice(1)}</span>
-              </>
-            );
-          } else if (isChunkDone || isDone) {
-            content = <span className='text-white/30'>{chunk.text}</span>;
-          } else if (isSomeoneElseActive) {
-            content = <span style={{ color: playerColor }} className='animate-pulse font-black'>{chunk.text}</span>;
-          } else {
-            content = <span className='text-white/60'>{chunk.text}</span>;
+            if (isActiveChunk) {
+              const done = keygraph.seq_done() || '';
+              const rest = keygraph.seq_candidates() || '';
+              return (
+                <span key={i}>
+                  {i > 0 && <span className='opacity-30'>　</span>}
+                  <span className='text-white/30'>{done}</span>
+                  <span style={{ color: playerColor }}>{rest.slice(0, 1)}</span>
+                  <span className='text-white/40'>{rest.slice(1)}</span>
+                </span>
+              );
+            } else if (isChunkDone) {
+              return (
+                <span key={i}>
+                  {i > 0 && <span className='opacity-30'>　</span>}
+                  <span className='text-white/30'>{chunk.text}</span>
+                </span>
+              );
+            } else {
+              return (
+                <span key={i}>
+                  {i > 0 && <span className='opacity-30'>　</span>}
+                  <span className='text-white/60'>{chunk.text}</span>
+                </span>
+              );
+            }
           }
 
+          // 他人がアクティブな場合 (文字列ベースの表示)
+          if (isSomeoneElseActive) {
+            const theirChunkIdx = opponentChunkIdx ?? 0;
+            const theirTyping = currentTyping ?? '';
+            const theirWord = currentWord ?? '';
+
+            // スロットベースの行番号差分で過去/現在チャンクを判定
+            const theirLineIdxRelative = (uLineIdx ?? -1) - (currentBlockIdx * 4);
+            const isPastChunk = lineIdx < theirLineIdxRelative 
+              || (lineIdx === theirLineIdxRelative && i < theirChunkIdx);
+            
+            const isCurrentChunk = lineIdx === theirLineIdxRelative 
+              && i === theirChunkIdx 
+              && chunk.text === theirWord;
+
+            if (isPastChunk) {
+              return (
+                <span key={i}>
+                  {i > 0 && <span className='opacity-30'>　</span>}
+                  <span className='text-white/30'>{chunk.text}</span>
+                </span>
+              );
+            }
+            if (isCurrentChunk) {
+              const doneText = theirTyping;
+              const restText = chunk.text.slice(doneText.length);
+              const activeChar = restText[0] ?? '';
+              const remainingText = restText.slice(1);
+              return (
+                <span key={i}>
+                  {i > 0 && <span className='opacity-30'>　</span>}
+                  <span className='text-white/30'>{doneText}</span>
+                  <span style={{ color: playerColor }}>{activeChar}</span>
+                  <span className='text-white/40'>{remainingText}</span>
+                </span>
+              );
+            }
+            return (
+              <span key={i}>
+                {i > 0 && <span className='opacity-30'>　</span>}
+                <span className='text-white/40'>{chunk.text}</span>
+              </span>
+            );
+          }
+
+          // 完了済み行、または待機中
+          const isLineDone = isDone;
+          const isLineFuture = isFuture;
           return (
             <span key={i}>
               {i > 0 && <span className='opacity-30'>　</span>}
-              {content}
+              <span className={isLineDone ? 'text-white/30' : isLineFuture ? 'text-white/20' : 'text-white/60'}>
+                {chunk.text}
+              </span>
             </span>
           );
         })}
       </div>
-
     </div>
   );
 };
@@ -72,13 +148,9 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const [currentBlockIdx, setCurrentBlockIdx] = useState(0);
   const [currentLineIdx, setCurrentLineIdx] = useState(0);
   const [currentChunkIdx, setCurrentChunkIdx] = useState(0);
-  const [combo, setCombo] = useState(0);
   const [isGameOver, setIsGameOver] = useState(false);
-  const [maxCombo, setMaxCombo] = useState(0);
   const [isEngineReady, setIsEngineReady] = useState(false);
   const [comboAnimKey, setComboAnimKey] = useState(0);
-  // keygraph の進捗変化をレンダリングに反映するためのカウンター
-  const [kgTick, setKgTick] = useState(0);
 
   const playerRef = useRef<any>(null);
   const instanceIdRef = useRef<number>(0);
@@ -89,8 +161,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
   const playerIds = useMemo(() => {
     if (!roomState || !roomState.players) return [playerId];
-    return Object.keys(roomState.players).sort();
-  }, [roomState, playerId]);
+    return Object.keys(roomState.players).sort(); // アルファベット順に固定
+  }, [roomState?.players, playerId]);
   const numPlayers = playerIds.length || 1;
   const myPos = playerIds.indexOf(playerId);
 
@@ -141,7 +213,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   }, [mapData.videoId, roomId]);
 
   // =====================
-  // startTime 変化 → 再生制御
+  // startTime 変化 → 再生制御 & 初期化
   // =====================
   useEffect(() => {
     const start = roomState?.startTime;
@@ -155,17 +227,23 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           else p.playVideo();
         });
       }
+      // 修正2: 初回セットの自分の開始行をセット
+      const firstMine = mapData.displaySets[0]?.lines.findIndex((_, idx) => isMine(idx));
+      if (firstMine !== -1) setCurrentLineIdx(firstMine);
     } else {
       try { if (playerRef.current?.stopVideo) playerRef.current.stopVideo(); } catch (e) { }
       if (!isGameOver) {
-        setCurrentBlockIdx(0); setCurrentLineIdx(0); setCurrentChunkIdx(0); setCombo(0);
+        setCurrentBlockIdx(0); setCurrentLineIdx(0); setCurrentChunkIdx(0);
       }
     }
   }, [roomState?.startTime, isGameOver]);
 
-  const currentSet = mapData.displaySets[currentBlockIdx];
-  const currentLine = currentSet?.lines[currentLineIdx];
-  const isMe = currentLine ? (currentLine.absLineIdx % numPlayers === myPos) : false;
+  const currentSet = mapData.displaySets?.[currentBlockIdx];
+  const currentLine = currentSet?.lines?.[currentLineIdx];
+  
+  // 修正2: 自分の担当行かどうかの判定 (セット内インデックスを使用)
+  const isMine = (lineIdxInSet: number): boolean => (lineIdxInSet % numPlayers) === myPos;
+  const isMe = currentLine ? isMine(currentLineIdx) : false;
 
   // =====================
   // ブロック進行タイマー (displaySetsベース)
@@ -206,40 +284,74 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
         const nextSet = mapData.displaySets?.[currentBlockIdx + 1];
         if (nextSet && ms >= nextSet.timeMs) {
-          setCurrentBlockIdx(v => v + 1);
-          setCurrentLineIdx(0);
+          const nextBlockIdx = currentBlockIdx + 1;
+          setCurrentBlockIdx(nextBlockIdx);
+          
+          // 新しいセットでの自分の最初の行を探す
+          const firstMine = mapData.displaySets[nextBlockIdx].lines.findIndex((_, idx) => isMine(idx));
+          setCurrentLineIdx(firstMine !== -1 ? firstMine : 0);
           setCurrentChunkIdx(0);
           setIsEngineReady(false);
         }
       }
     }, 50);
     return () => clearInterval(int);
-  }, [currentBlockIdx, mapData.displaySets, isStarted, endTimeMs, roomState?.startTime]);
+  }, [currentBlockIdx, mapData.displaySets, isStarted, endTimeMs, roomState?.startTime, numPlayers, myPos]);
 
 
   // =====================
-  // 時間が来たらチャンクをエンジンにロード (アクティブ化)
+  // チャンクをエンジンにロード (ハイブリッド・タイミング制限)
   // =====================
   useEffect(() => {
-    const int = setInterval(() => {
-      if (!isStarted || isEngineReady || !isMe) return;
-      
+    if (!isStarted || isGameOver || !isMe || !currentLine) {
+      setIsEngineReady(false);
+      return;
+    }
+
+    // 修正: 1行目のみtimeMsチェック
+    if (currentLineIdx === 0) {
+      const p = playerRef.current;
+      if (!p || typeof p.getCurrentTime !== 'function') {
+        setIsEngineReady(false); return;
+      }
+      const currentMs = p.getCurrentTime() * 1000;
+      if (currentMs < currentLine.timeMs) {
+        setIsEngineReady(false); return;
+      }
+    }
+    // 2行目以降は即座にOK
+
+    const currentChunk = currentLine.chunks?.[currentChunkIdx];
+    if (currentChunk) {
+      console.log('keygraph.build:', currentChunk.text);
+      keygraph.reset();
+      keygraph.build(currentChunk.text);
+      setIsEngineReady(true);
+    } else {
+      setIsEngineReady(false);
+    }
+  }, [currentBlockIdx, currentLineIdx, currentChunkIdx, isStarted, isMe, currentLine, isGameOver]);
+
+  // ★1行目のtimeMs監視タイマー
+  useEffect(() => {
+    if (!isStarted || currentLineIdx !== 0 || isEngineReady || isGameOver) return;
+    const interval = setInterval(() => {
       const p = playerRef.current;
       if (!p || typeof p.getCurrentTime !== 'function') return;
-      const ms = p.getCurrentTime() * 1000;
-      
-      const currentSet = mapData.displaySets?.[currentBlockIdx];
-      const currentLine = currentSet?.lines[currentLineIdx];
-      const currentChunk = currentLine?.chunks[currentChunkIdx];
-      
-      if (currentChunk && ms >= currentChunk.timeMs - 200) {
-        keygraph.reset();
-        keygraph.build(currentChunk.text);
-        setIsEngineReady(true);
+      const currentMs = p.getCurrentTime() * 1000;
+      const set0Line = mapData.displaySets?.[currentBlockIdx]?.lines?.[0];
+      if (set0Line && currentMs >= set0Line.timeMs) {
+        const currentChunk = set0Line.chunks?.[currentChunkIdx];
+        if (currentChunk) {
+          keygraph.reset();
+          keygraph.build(currentChunk.text);
+          setIsEngineReady(true);
+        }
+        clearInterval(interval);
       }
     }, 50);
-    return () => clearInterval(int);
-  }, [currentBlockIdx, currentLineIdx, currentChunkIdx, isStarted, isEngineReady, mapData.displaySets]);
+    return () => clearInterval(interval);
+  }, [isStarted, currentLineIdx, currentBlockIdx, isEngineReady, isGameOver, mapData.displaySets, currentChunkIdx]);
 
   // =====================
   // キーボードイベント
@@ -247,60 +359,123 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   useEffect(() => {
     const handle = (e: KeyboardEvent) => {
       if (!isStarted || !isEngineReady || !isMe || e.key.length > 1 || e.altKey || e.ctrlKey || e.metaKey) return;
+
+      const currentChunk = currentLine?.chunks?.[currentChunkIdx];
+      if (!currentChunk) return;
+
+      // グローバルな進行度チェック
+      const globalLine = roomState?.globalLineIdx ?? 0;
+      const globalChunk = roomState?.globalChunkIdx ?? 0;
+      const myAbsLine = currentLine.absLineIdx;
+      const myChunkIdx = currentChunkIdx;
+
+      // 順序チェック: 現在の自分が打とうとしている場所が
+      // 部屋全体のターゲットより先なら、コンボを強制リセット（飛ばし打ち）
+      const isAhead = (myAbsLine > globalLine) || (myAbsLine === globalLine && myChunkIdx > globalChunk);
+      const isCurrentTarget = (myAbsLine === globalLine && myChunkIdx === globalChunk);
+
+      if (isAhead) {
+        if (roomState?.sharedCombo && roomState?.sharedCombo > 0) {
+          updateSharedCombo(roomId, 0, roomState.maxSharedCombo || 0);
+        }
+      }
+
       if (keygraph.next(e.key.toLowerCase())) {
-        try { sound.play(); } catch (_) { }
-        setCombo(prev => {
-          const n = prev + 1;
-          if (n > maxCombo) setMaxCombo(n);
-          setComboAnimKey(k => k + 1);
-          return n;
-        });
+        try { 
+          sound.currentTime = 0; sound.play(); 
+        } catch (_) { }
+
+        setComboAnimKey(k => k + 1);
         if (roomState?.sharedScore !== undefined) incrementSharedScore(roomId, roomState.sharedScore + 10);
-        // keygraph の状態変化をレンダリングに伝える
-        setKgTick(t => t + 1);
+        
+        // ★入力のたびに chunkProgress をリアルタイム送信 (パーソナル同期用)
+        if (roomId && playerId && currentLine) {
+          const typingDone = keygraph.seq_done();
+          const progress = typingDone ? typingDone.length : 0;
+          updatePlayerProgress(
+            roomId, playerId, 
+            currentBlockIdx * 4 + currentLineIdx, 
+            currentChunkIdx, 
+            0, 0, 0, 
+            currentChunkIdx, progress,
+            typingDone || '',
+            currentChunk.text
+          );
+        }
+
         // チャンクが終了したら次へ
         if (keygraph.is_finished()) {
+          // ★共有コンボ加算 (チャンク単位)
+          if (isCurrentTarget) {
+            const nextCombo = (roomState?.sharedCombo || 0) + 1;
+            const nextMax = Math.max(roomState?.maxSharedCombo || 0, nextCombo);
+            updateSharedCombo(roomId, nextCombo, nextMax);
+
+            // 全体のターゲットを進める
+            let nextGlobalLine = globalLine;
+            let nextGlobalChunk = globalChunk + 1;
+            if (nextGlobalChunk >= currentLine.chunks.length) {
+              nextGlobalLine++;
+              nextGlobalChunk = 0;
+            }
+            updateGlobalProgress(roomId, nextGlobalLine, nextGlobalChunk);
+          }
+
           if (currentChunkIdx + 1 < currentLine.chunks.length) {
-            // 同じ行の次のチャンクへ
             setCurrentChunkIdx(prev => prev + 1);
-          } else if (currentLineIdx + 1 < currentSet.lines.length) {
-            // 次の行へ
-            setCurrentLineIdx(prev => prev + 1);
-            setCurrentChunkIdx(0);
           } else {
-            // 次のセットへ
-            if (currentBlockIdx + 1 < mapData.displaySets.length) {
-              setCurrentBlockIdx(prev => prev + 1);
-              setCurrentLineIdx(0);
+            let nextMine = -1;
+            if (currentSet?.lines) {
+              for (let i = currentLineIdx + 1; i < currentSet.lines.length; i++) {
+                if (isMine(i)) {
+                  nextMine = i;
+                  break;
+                }
+              }
+            }
+
+            if (nextMine !== -1) {
+              setCurrentLineIdx(nextMine);
               setCurrentChunkIdx(0);
             } else {
-              // 全タイピング終了！
-              setIsGameOver(true);
-              try { playerRef.current?.stopVideo(); } catch (e) { }
+              const isLastSet = (currentBlockIdx + 1 >= mapData.displaySets.length);
+              if (isLastSet) {
+                setIsGameOver(true);
+                try { playerRef.current?.stopVideo(); } catch (e) { }
+              }
             }
           }
           setIsEngineReady(false);
         }
       } else {
         try { miss_sound.play(); } catch (_) { }
-        setCombo(0);
+        // ミスでの途切れはいらない仕様
       }
     };
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
-  }, [isStarted, isEngineReady, maxCombo, roomState?.sharedScore, roomId, currentBlockIdx, currentLineIdx, currentChunkIdx, mapData.displaySets, numPlayers, myPos]);
+  }, [isStarted, isEngineReady, isMe, currentLine, currentChunkIdx, roomState, roomId, currentBlockIdx, currentLineIdx, mapData.displaySets, numPlayers, myPos]);
 
   // =====================
   // 進捗同期 (ブロック番号 + 行番号をシリアル化して送信)
   // =====================
   useEffect(() => {
-    if (roomId && playerId) {
-      const act = currentLine?.absLineIdx ?? 0;
-      updatePlayerProgress(roomId, playerId, act, currentChunkIdx, combo, maxCombo, 0);
+    if (roomId && playerId && currentLine) {
+      updatePlayerProgress(
+        roomId, playerId, 
+        currentBlockIdx * 4 + currentLineIdx, // スロットIDを送信
+        currentChunkIdx, 
+        0, 0, 0, // 個人コンボは不要
+        currentChunkIdx,
+        0, 
+        '',
+        currentLine.chunks[currentChunkIdx]?.text || ''
+      );
     }
-  }, [currentBlockIdx, currentLineIdx, currentChunkIdx, kgTick, combo, maxCombo, roomId, playerId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentBlockIdx, currentLineIdx, currentChunkIdx, roomId, playerId]);
 
-  if (!mapData || !mapData.displaySets || mapData.displaySets.length === 0) return <div>Loading...</div>;
+  if (!mapData || !mapData.displaySets || mapData.displaySets.length === 0 || !currentSet) return <div>Loading...</div>;
   const scoreText = (roomState?.sharedScore || 0).toLocaleString();
 
   // 自分のプレイヤーカラー
@@ -326,7 +501,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         <div className='flex flex-col items-center gap-4 py-8 animate-in fade-in zoom-in duration-1000 w-full'>
           <div className='text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-600 italic tracking-tighter'>RESULT</div>
           <div className='text-3xl font-black text-white'>SCORE: <span className='text-yellow-400'>{scoreText}</span></div>
-          <div className='text-xl font-bold text-white/60'>MAX COMBO: {maxCombo}</div>
+          <div className='text-xl font-bold text-white/60'>MAX SHARED COMBO: {roomState?.maxSharedCombo || 0}</div>
           <button
             onClick={() => {
               try { playerRef.current?.stopVideo(); } catch (e) {}
@@ -360,7 +535,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
               className='text-3xl transition-transform'
               style={{ animation: comboAnimKey > 0 ? 'comboScale 0.3s ease-out' : 'none' }}
             >
-              {combo + ' COMBO'}
+              {(roomState?.sharedCombo || 0) + ' COMBO'}
             </div>
             <div className='text-5xl'>{scoreText}</div>
           </div>
@@ -371,13 +546,16 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       {!isGameOver && currentSet && (
         <div className='flex flex-col w-full' style={{ minHeight: '16rem' }}>
           {currentSet.lines.map((line: any, lIdx: number) => {
-            const pid = playerIds[line.absLineIdx % numPlayers];
+            const pid = playerIds[lIdx % numPlayers]; // セット内の番号でプレイヤーを特定
             const u = roomState?.players?.[pid];
-            const isCurrentPlayerMe = (line.absLineIdx % numPlayers === myPos);
-            const playerColor = u?.color || PLAYER_COLORS[line.absLineIdx % 4];
+            const isCurrentPlayerMe = pid === playerId;
+            const playerColor = u?.color || PLAYER_COLORS[lIdx % 4];
 
-            const isDone = u && u.currentLineIdx > line.absLineIdx;
-            const isSomeoneElseActive = !isCurrentPlayerMe && u && u.currentLineIdx === line.absLineIdx;
+            // 判定ロジック: セット内の相対スロットインデックスを使う
+            const uLineIdx = currentBlockIdx * 4 + lIdx;
+            const isDone = u && u.currentLineIdx > uLineIdx;
+            const isSomeoneElseActive = !isCurrentPlayerMe && u && u.currentLineIdx === uLineIdx;
+            const isFuture = u && u.currentLineIdx < uLineIdx;
             const pidName = (u?.name || '---') + (pid === playerId ? ' (YOU)' : '');
 
             return (
@@ -391,7 +569,11 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 playerColor={playerColor}
                 isDone={isDone}
                 isSomeoneElseActive={isSomeoneElseActive}
+                isFuture={isFuture}
                 pidName={pidName}
+                currentTyping={u?.currentTyping}
+                currentWord={u?.currentWord}
+                currentBlockIdx={currentBlockIdx}
               />
             );
           })}

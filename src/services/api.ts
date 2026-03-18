@@ -34,6 +34,7 @@ export interface Chunk {
   text: string;
   timeMs: number;
   isLineHead: boolean;
+  absLineIdx: number; // オリジナルの行番号
 }
 
 export interface DisplayLine {
@@ -56,8 +57,7 @@ export interface ParseResult {
 // ============================================
 // よみがな分割ユーティリティ (kuromoji.js)
 // ============================================
-const toHira = (str: string) =>
-  str.replace(/[ァ-ン]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+
 
 let tokenizerPromise: Promise<any> | null = null;
 
@@ -76,38 +76,49 @@ function getTokenizer(): Promise<any> {
 }
 
 async function splitYomi(
-  lyrics: string,
+  _lyrics: string,
   word: string,
-  MIN = 4,
-  MAX = 15
+  MIN = 3,
+  MAX = 14
 ): Promise<string[]> {
-  if (!word.trim()) return [];
-  if (/^[a-zA-Z0-9 ]+$/.test(word)) return word.split(' ').filter(p => p);
+  const katakanaToHiragana = (src: string) =>
+    src.replace(/[\u30a1-\u30f6]/g, (m) => String.fromCharCode(m.charCodeAt(0) - 0x60));
+
+  const cleanWord = katakanaToHiragana(word.replace(/[！？!?　 、。・]/g, '')).trim();
+  if (!cleanWord) return [];
+  if (/^[a-zA-Z0-9 ]+$/.test(cleanWord)) return cleanWord.split(' ').filter(p => p);
 
   try {
     const tokenizer = await getTokenizer();
-    const tokens = tokenizer.tokenize(lyrics);
+    const tokens = tokenizer.tokenize(cleanWord);
 
-    const NO_BREAK = new Set(['っ', 'ッ', 'ゃ', 'ゅ', 'ょ', 'ャ', 'ュ', 'ョ', 'ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ', 'ー']);
+    const SMALL_CHARS = /[っッゃゅょャュョぁぃぅぇぉァィゥェォー]/;
 
-    // 文節グループ化（自立語+付属語）
+    // 文節グループ化（自立語 + 付属語/非自立語/接尾辞）
     const groups: string[] = [];
     let cur = '';
     for (const t of tokens) {
       const pos = t.pos;
+      const pos1 = t.pos_detail_1;
+      
       const isFuzoku = ['助詞', '助動詞'].includes(pos);
-      const isKigo = pos === '記号';
-      if (isKigo) continue;
-      if (!isFuzoku) {
+      const isNonIndep = pos1 === '非自立'; // 「いって(しまっ)た」の「しまっ」など
+      const isSuffix = pos1 === '接尾';     // 「〜さ」「〜くん」など
+      const isSmallChar = SMALL_CHARS.test(t.surface_form); // 形態素が「ゃ」「っ」などで始まっている場合
+      
+      if (!isFuzoku && !isNonIndep && !isSuffix && !isSmallChar) {
         if (cur) groups.push(cur);
-        cur = toHira(t.reading || t.surface_form);
-      } else if (cur) {
-        cur += toHira(t.reading || t.surface_form);
+        cur = t.surface_form;
+      } else {
+        cur += t.surface_form;
       }
     }
     if (cur) groups.push(cur);
 
-    // マージ
+    // ★追加
+    console.log('【groups】', cleanWord, '→', groups);
+
+    // マージ（基本：MAXを超えない範囲でMINに近づける）
     let result = [...groups];
     let changed = true;
     while (changed) {
@@ -117,9 +128,11 @@ async function splitYomi(
       while (i < result.length) {
         const g = result[i];
         if (g.length < MIN) {
+          // 次と結合（MAX内）
           if (i + 1 < result.length && (g + result[i + 1]).length <= MAX) {
             next.push(g + result[i + 1]); i += 2; changed = true; continue;
           }
+          // 前と結合（MAX内）
           if (next.length && (next[next.length - 1] + g).length <= MAX) {
             next[next.length - 1] += g; i++; changed = true; continue;
           }
@@ -129,22 +142,60 @@ async function splitYomi(
       result = next;
     }
 
-    // MAX超え強制分割
-    const final: string[] = [];
-    for (let r of result) {
-      while (r.length > MAX) {
-        let j = MAX;
-        while (j > 1 && NO_BREAK.has(r[j])) j--;
-        final.push(r.slice(0, j));
-        r = r.slice(j);
+    // 強制マージ（MINを満たさないものを、MAXを多少超えても良いので結合する）
+    // 例: MIN=4, MAX=6 の時、[3, 4] -> [7] にする
+    {
+      const next: string[] = [];
+      let i = 0;
+      while (i < result.length) {
+        let g = result[i];
+        if (g.length < MIN) {
+          if (i + 1 < result.length) {
+            // 次があるなら結合
+            g = g + result[i + 1];
+            i += 2;
+          } else if (next.length > 0) {
+            // 次がないが前があるなら、前の末尾に結合
+            next[next.length - 1] += g;
+            i++;
+            continue;
+          } else {
+            i++;
+          }
+        } else {
+          i++;
+        }
+        next.push(g);
       }
-      if (r) final.push(r);
+      result = next;
     }
+    console.log('【merged】', result);
 
-    // wordとの照合（不一致はフォールバック）
-    if (final.join('') !== word.replace(/[！？]/g, '')) {
-      console.warn('kuromoji mismatch fallback:', lyrics);
-      return [word]; // そのまま返す
+    // MAX超え強制分割
+    const smartSplit = (text: string, maxLen: number): string[] => {
+      const parts: string[] = [];
+      let temp = text;
+      while (temp.length > maxLen) {
+        let splitLen = maxLen;
+        if (temp.length < maxLen + MIN) splitLen = Math.floor(temp.length / 2);
+        let j = splitLen;
+        const initialJ = j;
+        while (j > 1 && SMALL_CHARS.test(temp[j])) j--;
+        if (j !== initialJ) console.log('【smartSplit adj】', temp.slice(0, initialJ), '→', j, ':', temp[j]);
+        parts.push(temp.slice(0, j));
+        temp = temp.slice(j);
+      }
+      if (temp) parts.push(temp);
+      return parts;
+    };
+
+    const final = result.flatMap(r => smartSplit(r, MAX));
+    console.log('【final】', final);
+
+    // 照合
+    if (final.join('') !== cleanWord) {
+      console.warn('kuromoji mismatch:', cleanWord, '→', final);
+      return smartSplit(cleanWord, MAX);
     }
     return final;
 
@@ -157,21 +208,24 @@ async function splitYomi(
 // ③ JsonLine配列 → Chunk配列（フラット）
 function toChunks(jsonLines: ParsedLine[]): Chunk[] {
   const result: Chunk[] = [];
-  for (const line of jsonLines) {
-    if (!line.rawWord.trim() || line.isEnd) continue;
-    line.words.forEach((text, idx) => {
-      result.push({
-        text,
-        timeMs: line.timeMs,
-        isLineHead: idx === 0
+  jsonLines.forEach((line, lineIdx) => {
+    if (!line.rawWord.trim() || line.isEnd) return;
+    line.words
+      .filter(text => text.trim().length > 0)
+      .forEach((text, idx) => {
+        result.push({
+          text,
+          timeMs: line.timeMs,
+          isLineHead: idx === 0,
+          absLineIdx: lineIdx // オリジナルの行番号を保持
+        });
       });
-    });
-  }
+  });
   return result;
 }
 
 // ④ Chunk配列 → DisplayLine配列
-function buildDisplayLines(chunks: Chunk[], lineMaxChars = 15): DisplayLine[] {
+function buildDisplayLines(chunks: Chunk[], lineMaxChars = 14): DisplayLine[] {
   const lines: DisplayLine[] = [];
   let current: DisplayLine | null = null;
   let absCounter = 0;
@@ -179,10 +233,6 @@ function buildDisplayLines(chunks: Chunk[], lineMaxChars = 15): DisplayLine[] {
   for (const chunk of chunks) {
     const currentLen = current?.chunks.reduce((s, c) => s + c.text.length, 0) ?? 0;
     const wouldOverflow = currentLen + chunk.text.length > lineMaxChars;
-
-    // 新しい行を開始する条件：
-    // ① 文字数オーバー
-    // ② isLineHead:true かつ 現在行が空でない
     const shouldBreak = wouldOverflow || (chunk.isLineHead && current !== null && current.chunks.length > 0);
 
     if (!current || shouldBreak) {
@@ -203,21 +253,15 @@ function buildDisplaySets(lines: DisplayLine[], setMaxLines = 4): DisplaySet[] {
     const isNewOrigin = line.chunks[0]?.isLineHead === true;
     const isFull = (current?.lines.length ?? 0) >= setMaxLines;
 
-    if (!current) {
-      // 最初のセット
-      current = { timeMs: line.timeMs, lines: [] };
-      sets.push(current);
-    } else if (isFull) {
-      // ★4行満杯 → 問答無用で次のセットへ
-      current = { timeMs: line.timeMs, lines: [] };
-      sets.push(current);
-    } else if (isNewOrigin) {
-      // 元行データの先頭チャンク → 新しいセットへ
+    if (!current || isFull || isNewOrigin) {
+      // セットが空、満杯、または新しい歌詞の開始点なら新セット
       current = { timeMs: line.timeMs, lines: [] };
       sets.push(current);
     }
+
     current.lines.push(line);
   }
+
   return sets;
 }
 // ============================================
@@ -264,6 +308,19 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
   const chunks = toChunks(filteredLines);
   const displayLines = buildDisplayLines(chunks);
   const displaySets = buildDisplaySets(displayLines);
+
+  // displaySets の全行・全チャンクの timeMs を
+  // セットの1行目の timeMs に統一する
+  for (const set of displaySets) {
+    const setTimeMs = set.lines[0]?.chunks[0]?.timeMs ?? 0;
+    set.timeMs = setTimeMs;
+    for (const line of set.lines) {
+      line.timeMs = setTimeMs;
+      for (const chunk of line.chunks) {
+        chunk.timeMs = setTimeMs;
+      }
+    }
+  }
 
   return { lines: parsedLines, displaySets, videoId };
 };
