@@ -3,7 +3,7 @@ import { MapLoader } from './components/MapLoader';
 import { TypingArea } from './components/TypingArea';
 import { PlayerLane } from './components/PlayerLane';
 import { ParseResult, fetchMapData } from './services/api';
-import { joinRoom, subscribeToRoom, RoomState, setRoomMapId, PLAYER_COLORS, getRoomState, resetRoom, leaveRoom, determineHostId, deleteRoomIfEmpty } from './services/sync';
+import { joinRoom, subscribeToRoom, RoomState, setRoomMapId, PLAYER_COLORS, getRoomState, resetRoom, determineHostId, deleteRoomIfEmpty, subscribeToAllRooms, leaveRoom as cleanupPlayer, updatePlayerHeartbeat } from './services/sync';
 
 function App() {
   const [mapData, setMapData] = useState<ParseResult | null>(null);
@@ -11,9 +11,16 @@ function App() {
   // ルーム管理ステート
   const [roomId, setRoomId] = useState('');
   const [playerName, setPlayerName] = useState('');
-  const [playerId] = useState(() => Math.random().toString(36).substring(2, 10));
+  const [playerId] = useState(() => {
+    const saved = localStorage.getItem('kytp_player_id');
+    if (saved) return saved;
+    const newId = Math.random().toString(36).substring(2, 10);
+    localStorage.setItem('kytp_player_id', newId);
+    return newId;
+  });
   const [inRoom, setInRoom] = useState(false);
   const [roomState, setRoomState] = useState<RoomState | null>(null);
+  const [allRooms, setAllRooms] = useState<Record<string, RoomState> | null>(null);
 
   const handleJoin = async () => {
     console.log('handleJoin clicked');
@@ -79,14 +86,53 @@ function App() {
     // Note: leaveRoomは呼び出さず、inRoom/roomIdも維持することでロビー（選曲画面）に戻る
   };
 
-  // アンマウント時（ブラウザを閉じる直前など）のクリーンアップ
+  // 全ルーム購読とクリーンアップ
   useEffect(() => {
-    return () => {
-      if (roomId && playerId) {
-        leaveRoom(roomId, playerId);
-      }
-    };
-  }, [roomId, playerId]);
+    if (!inRoom) {
+      const unsub = subscribeToAllRooms((rooms) => {
+        setAllRooms(rooms);
+        if (rooms) {
+          const now = Date.now();
+          Object.keys(rooms).forEach(rid => {
+            const r = rooms[rid];
+            const players = r.players || {};
+            const pIds = Object.keys(players);
+            
+            // 0人の部屋を削除
+            if (pIds.length === 0) {
+              deleteRoomIfEmpty(rid);
+              return;
+            }
+
+            // 幽霊プレイヤー（30秒以上無反応）を削除
+            pIds.forEach(pid => {
+              const p = players[pid];
+              const last = p.lastSeen || 0;
+              if (now - last > 60000) {
+                cleanupPlayer(rid, pid);
+              }
+            });
+          });
+        }
+      });
+      return unsub;
+    }
+  }, [inRoom]);
+
+  const activeRoomsCount = allRooms ? Object.keys(allRooms).filter(rid => {
+    const players = allRooms[rid].players;
+    return players && Object.keys(players).length > 0;
+  }).length : 0;
+
+  // ハートビート (15秒ごとに生存確認を更新)
+  useEffect(() => {
+    if (inRoom && roomId && playerId) {
+      const interval = setInterval(() => {
+        updatePlayerHeartbeat(roomId, playerId);
+      }, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [inRoom, roomId, playerId]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-[#fff5f7] via-white to-[#f5f3ff] text-zinc-800 p-6 overflow-x-hidden selection:bg-rose-200">
@@ -146,6 +192,38 @@ function App() {
               </span>
             </button>
           </div>
+
+          {activeRoomsCount > 0 && (
+            <div className="mt-10">
+              <h3 className="text-[10px] uppercase font-black tracking-[0.3em] text-rose-300 mb-4 text-center">Live Stages</h3>
+              <div className="grid grid-cols-1 gap-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                {Object.entries(allRooms || {})
+                  .filter(([_, state]) => state.players && Object.keys(state.players).length > 0)
+                  .map(([rid, state]) => {
+                    const pCount = Object.keys(state.players || {}).length;
+                    return (
+                      <button
+                        key={rid}
+                        onClick={() => { setRoomId(rid); }}
+                        className="group flex items-center justify-between p-4 bg-zinc-50 border-2 border-zinc-100 hover:border-rose-200 transition-all text-left active:scale-[0.98]"
+                      >
+                        <div className="flex flex-col">
+                          <span className="text-xs font-black text-zinc-400 italic mb-0.5">Stage ID</span>
+                          <span className="font-black text-zinc-700 tracking-tighter"># {rid}</span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className="text-[10px] font-black text-rose-300 uppercase italic mb-0.5">Audience</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            <span className="font-black text-sm text-zinc-600 tabular-nums">{pCount}P</span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="w-full max-w-5xl flex flex-col items-center relative z-10 mx-auto">

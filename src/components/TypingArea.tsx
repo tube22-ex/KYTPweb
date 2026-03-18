@@ -30,7 +30,7 @@ const LineItem: React.FC<any> = ({
 
   return (
     <div className={`py-2 px-10 transition-all duration-300 rounded-none ${isActiveLine ? 'bg-white shadow-[0_4px_30px_rgba(255,133,161,0.2)] relative z-10 scale-[1.01]' : ''}`}>
-      <div className='text-3xl font-black leading-tight flex flex-wrap gap-x-4 tracking-tighter'>
+      <div className='text-4xl font-black leading-tight flex flex-wrap gap-x-4 tracking-tighter'>
         {line.chunks.map((chunk: any, i: number) => {
           const isChunkActive = isActiveLine && i === currentChunkIdx;
           const isOpponentActiveChunk = isSomeoneElseActive && i === (opponentChunkIdx ?? 0);
@@ -91,25 +91,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     return (absLineIdx: number, pids: string[]) => {
       const n = pids.length;
       if (n === 0) return "";
-      const bIdx = Math.floor(absLineIdx / 4);
-      const lInB = absLineIdx % 4;
-      const createRand = (seed: number) => {
-        let s = seed;
-        return () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
-      };
-      const shuffle = (arr: number[], seed: number) => {
-        const res = [...arr];
-        const rand = createRand(seed);
-        for (let i = res.length - 1; i > 0; i--) {
-          const j = Math.floor(rand() * (i + 1));
-          [res[i], res[j]] = [res[j], res[i]];
-        }
-        return res;
-      };
-      const o1 = shuffle(Array.from({ length: n }, (_, i) => i), bIdx + 12345);
-      const o2 = shuffle(Array.from({ length: n }, (_, i) => i), bIdx + 67890);
-      const c = [...o1, ...o2];
-      return pids[c[lInB] % n];
+      return pids[absLineIdx % n];
     };
   }, []);
 
@@ -407,7 +389,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         {!isGameOver && (
           <div className="w-full flex flex-col gap-0">
             {/* 2. 歌詞モニターエリア */}
-            <div className="w-full p-10 min-h-[240px] flex flex-col justify-center relative overflow-hidden bubble-bg bg-white border-b-4 border-white/10">
+            <div className="w-full p-10 min-h-[240px] flex flex-col justify-center relative overflow-hidden bubble-bg bg-white border-y-4 border-rose-200">
                {canSkip && (
                  <div className="absolute top-3 right-5 animate-bounce z-20">
                    <div className="px-3 py-1 bg-rose-400 text-white text-[10px] font-black rounded-full shadow-md flex items-center gap-2">
@@ -417,7 +399,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                  </div>
                )}
 
-               <div className="flex flex-col w-full gap-1.5">
+               <div 
+                 className="flex flex-col w-full gap-1.5 transition-opacity duration-700"
+                 style={{ opacity: (currentBlockIdx === 0 && currentTime * 1000 < currentSet.timeMs) ? 0 : 1 }}
+               >
                 {currentSet.lines.map((line: any, lIdx: number) => {
                   const pid = getAssignedPlayerId(line.absLineIdx, playerIds);
                   const u = roomState?.players?.[pid];
@@ -444,8 +429,19 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                       width: `${(() => {
                         const line = currentSet.lines[0];
                         const nextSet = mapData.displaySets[currentBlockIdx + 1];
-                        const end = nextSet ? nextSet.timeMs : (videoDuration * 1000);
-                        const progress = ((currentTime * 1000) - line.timeMs) / (Math.max(1, end - line.timeMs));
+                        const now = currentTime * 1000;
+                        const setEnd = nextSet ? nextSet.timeMs : (videoDuration * 1000);
+                        
+                        let start, end;
+                        if (currentBlockIdx === 0 && now < line.timeMs) {
+                          start = 0;
+                          end = line.timeMs;
+                        } else {
+                          start = line.timeMs;
+                          end = setEnd;
+                        }
+                        
+                        const progress = (now - start) / (Math.max(1, end - start));
                         return Math.max(0, Math.min(100, progress * 100));
                       })()}%` 
                     }}
@@ -453,25 +449,22 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 </div>
               )}
 
-              <div className="h-32 flex items-center justify-between px-10">
+              <div className="h-24 flex items-center justify-between px-10">
                 <div className="flex flex-col items-start leading-none mt-1">
                   <span className="text-[10px] font-black text-rose-100 uppercase italic">Target</span>
                   <span className="text-xs font-black text-white italic">{isMe ? 'TYPE!' : 'WAIT'}</span>
                 </div>
 
-                <div className="flex-1 flex flex-col items-center justify-center -mt-1">
+                <div className="flex-1 flex items-center justify-start pl-10">
                   {isEngineReady && isMe ? (
-                    <>
-                      <div className="text-7xl font-black text-white drop-shadow-md mb-1 leading-none">
-                        {currentLine.chunks[currentChunkIdx].text}
-                      </div>
-                      <div className="text-5xl font-black italic tracking-wider text-rose-100 drop-shadow-lg leading-none">
+                    <div className="flex items-center gap-2">
+                      <span className="text-6xl font-black italic tracking-wider text-white drop-shadow-lg">
                         <span className="opacity-30">{(keygraph.key_done() || '').toUpperCase()}</span>
                         <span>{(keygraph.key_candidate() || '').toUpperCase()}</span>
-                      </div>
-                    </>
+                      </span>
+                    </div>
                   ) : (
-                    <div className="text-white/40 font-black uppercase tracking-[0.3em] text-[10px] animate-pulse">
+                    <div className="text-white/40 font-black uppercase tracking-[0.3em] text-[10px] animate-pulse w-full text-center pr-20">
                       {isSomeoneElseActive ? 'Opponent Activity...' : 'Waiting for Rhythm...'}
                     </div>
                   )}

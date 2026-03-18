@@ -10,14 +10,22 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleLoad = async () => {
-    if (!mapId.trim()) return;
+   const handleLoad = async () => {
+    let targetId = mapId.trim();
+    // ytyping URL (https://ytyping.net/type/1) から ID を抽出
+    const match = targetId.match(/\/type\/(\d+)$/);
+    if (match) {
+      targetId = match[1];
+      setMapId(targetId); // 入力欄もクリーンアップ
+    }
+
+    if (!targetId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchMapData(mapId);
+      const data = await fetchMapData(targetId);
       console.log('Fetched Map Data:', data);
-      onLoad(data, mapId);
+      onLoad(data, targetId);
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'データ取得に失敗しました');

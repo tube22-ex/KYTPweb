@@ -17,6 +17,7 @@ export interface PlayerState {
   currentTyping: string;  // 追加: 入力済みひらがな
   currentWord: string;    // 追加: 現在入力中の単語全体
   joinedAt: number;      // 追加: 入室時刻（ホスト判定用）
+  lastSeen: number;      // 追加: 生存確認用タイムスタンプ
 }
 
 export const PLAYER_COLORS = [
@@ -62,7 +63,8 @@ export const joinRoom = async (roomId: string, playerId: string, playerName: str
       isFinished: false,
       currentTyping: '',
       currentWord: '',
-      joinedAt: serverTimestamp() as any // Firebaseサーバー時刻
+      joinedAt: serverTimestamp() as any, // Firebaseサーバー時刻
+      lastSeen: Date.now()
     });
     // 接続が切れたらプレイヤー情報を自動削除
     onDisconnect(playerRef).remove();
@@ -99,8 +101,23 @@ export const updatePlayerProgress = async (
     maxCombo: maxCombo,
     score: score,
     currentTyping: currentTyping ?? '',
-    currentWord: currentWord ?? ''
+    currentWord: currentWord ?? '',
+    lastSeen: Date.now()
   });
+};
+
+/**
+ * プレイヤーの生存確認（ハートビート）を更新します。
+ */
+export const updatePlayerHeartbeat = async (roomId: string, playerId: string) => {
+  const playerRef = ref(db, `rooms/${roomId}/players/${playerId}`);
+  // getで存在確認してから更新し、幽霊として削除された後に勝手に復活するのを防ぐ
+  const snap = await get(playerRef);
+  if (snap.exists()) {
+    await update(playerRef, {
+      lastSeen: Date.now()
+    });
+  }
 };
 
 /**
@@ -285,4 +302,18 @@ export const determineHostId = (players: Record<string, PlayerState> | undefined
     return a.id.localeCompare(b.id);
   });
   return sorted[0].id;
+};
+
+/**
+ * 全ての部屋リストを購読します。
+ */
+export const subscribeToAllRooms = (callback: (rooms: Record<string, RoomState> | null) => void) => {
+  const roomsRef = ref(db, "rooms");
+  return onValue(roomsRef, (snapshot) => {
+    if (snapshot.exists()) {
+      callback(snapshot.val() as Record<string, RoomState>);
+    } else {
+      callback(null);
+    }
+  });
 };
