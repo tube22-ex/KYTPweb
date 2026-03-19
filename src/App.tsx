@@ -37,7 +37,7 @@ function App() {
   const [activeBlockIdx, setActiveBlockIdx] = useState(0);
 
   // フォント設定
-  const [selectedFont, setSelectedFont] = useState("'M PLUS Rounded 1c', sans-serif");
+  const [selectedFont, setSelectedFont] = useState("'Noto Sans Mono', monospace");
 
   // 履歴管理
   const [history, setHistory] = useState<PlayedHistoryItem[]>(() => {
@@ -165,8 +165,8 @@ function App() {
         <img src={item.thumbnail} alt="" className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all scale-110 group-hover:scale-100" />
       </div>
       <div className="flex flex-col justify-center min-w-0 flex-1">
-        <div className="text-[7px] font-black text-rose-300 mb-0 tabular-nums uppercase italic"># {item.id}</div>
-        <div className="text-[9px] font-black text-zinc-500 truncate leading-tight group-hover:text-rose-400 transition-colors uppercase italic tracking-tighter">{item.title}</div>
+        <div className="text-[10px] font-black text-rose-300 mb-0 tabular-nums uppercase italic"># {item.id}</div>
+        <div className="text-[12px] font-black text-zinc-500 truncate leading-tight group-hover:text-rose-400 transition-colors uppercase italic tracking-tighter">{item.title}</div>
       </div>
     </button>
   );
@@ -301,11 +301,13 @@ function App() {
               <div className="w-full flex flex-col h-full">
                 {!mapData ? (
                   /* マップ選択待ち状態 */
-                  <div className="w-full flex flex-col gap-6 items-center">
-                    <div className="w-full transform transition-all animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  <div className="w-full h-full flex flex-col min-h-0">
+                    <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 mb-4">
                       <MapLoader onLoad={handleMapLoad} />
                     </div>
-                    <PlayerLane roomState={roomState} playerId={playerId} />
+                    <div className="flex-shrink-0 py-4 bg-white/60 backdrop-blur-md border-t border-rose-100 flex justify-center shadow-[0_-10px_20px_rgba(255,133,161,0.05)]">
+                      <PlayerLane roomState={roomState} playerId={playerId} />
+                    </div>
                   </div>
                 ) : (
                   /* プレイ（タイピング）状態 */

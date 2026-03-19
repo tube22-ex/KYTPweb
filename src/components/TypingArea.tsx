@@ -466,16 +466,16 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 </div>
               )}
 
-              <div className="h-24 flex items-center justify-between px-10">
+              <div className="h-20 flex items-center justify-between px-10">
                 <div className="flex flex-col items-start leading-none mt-1">
-                  <span className="text-[10px] font-black text-rose-100 uppercase italic">Target</span>
-                  <span className="text-xs font-black text-white italic">{isMe ? '打って！' : '待機'}</span>
+                  <span className="text-[12px] font-black text-rose-100 uppercase italic">Target</span>
+                  <span className="text-sm font-black text-white italic">{isMe ? '打って！' : '待機'}</span>
                 </div>
 
                 <div className="flex-1 flex items-center justify-start pl-10">
                   {isEngineReady && isMe ? (
                     <div className="flex items-center gap-2">
-                      <span className="text-5xl font-black italic tracking-wider text-white drop-shadow-lg">
+                      <span className="text-4xl font-black italic tracking-wider text-white drop-shadow-lg">
                         <span className="opacity-30">{(keygraph.key_done() || '').toUpperCase()}</span>
                         <span>{(keygraph.key_candidate() || '').toUpperCase()}</span>
                       </span>
@@ -488,7 +488,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 </div>
 
                 <div className="flex flex-col items-end leading-none mt-1">
-                  <span className="text-[10px] font-black text-rose-100 uppercase italic text-right">Combo</span>
+                  <span className="text-[12px] font-black text-rose-100 uppercase italic text-right">Combo</span>
                   <div key={comboAnimKey} className="text-4xl font-black italic text-white combo-pop leading-none">{roomState?.sharedCombo || 0}</div>
                 </div>
               </div>
@@ -498,21 +498,21 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             <div className="w-full flex">
               {/* 左パネル: スコア */}
               <div className="flex-1 p-6 flex flex-col items-center justify-center bubble-bg bg-white border-r-2 border-white/10">
-                <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">合計スコア</span>
+                <span className="text-[12px] font-black text-zinc-400 uppercase tracking-widest mb-1">合計スコア</span>
                 <div className="text-4xl font-black text-zinc-700 tracking-tighter">{scoreText}</div>
               </div>
 
-              {/* 中央パネル: ビデオ */}
-              <div className="w-[360px] aspect-video bg-black relative group border-r-2 border-white/10">
+              {/* 中央パネル: ビデオ (サイズ拡大) */}
+              <div className="w-[540px] aspect-video bg-black relative group border-r-2 border-white/10">
                 <div id='youtube-player' className="w-full h-full" />
               </div>
 
-              {/* 右パネル: 曲情報/メニュー */}
+              {/* 右パネル: 曲情報/メニュー (flex-1にして中央寄せを維持) */}
               <div className="flex-1 p-6 flex flex-col justify-between bubble-bg bg-white">
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-rose-300 uppercase italic">再生中</span>
-                  <div className="text-base font-black text-zinc-700 truncate mt-0.5">{mapData.title || 'Unknown Stage'}</div>
-                  <div className="text-[10px] font-bold text-zinc-400 truncate">{mapData.artist || 'Unknown Artist'}</div>
+                  <span className="text-[12px] font-black text-rose-300 uppercase italic">再生中</span>
+                  <div className="text-2xl font-black text-zinc-700 truncate mt-0.5 tracking-tighter italic">{mapData.title || 'Unknown Stage'}</div>
+                  <div className="text-sm font-bold text-zinc-400 truncate mt-1">{mapData.artist || 'Unknown Artist'}</div>
                 </div>
 
                 <div className="flex gap-2 mt-4">
@@ -552,7 +552,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) { } onBackToMenu(); }}
             className='bg-rose-500 hover:bg-rose-600 text-white font-black text-xl px-24 py-6 rounded-none shadow-2xl shadow-rose-200 transition-all hover:scale-110 active:scale-95'
           >
-            ステージ選択に戻る ♥
+            ステージ選択に戻る
           </button>
         </div>
       )}

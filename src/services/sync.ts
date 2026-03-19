@@ -1,6 +1,6 @@
 import { ref, onValue, set, update, serverTimestamp, get, onDisconnect, remove } from "firebase/database";
 import { db, fs } from "../configs/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs, query, limit } from "firebase/firestore";
 
 export interface PlayerState {
   id: string;
@@ -320,6 +320,26 @@ export const getCachedMapData = async (mapId: string | number): Promise<any | nu
 export const saveMapDataToCache = async (mapId: string | number, data: any) => {
   const docRef = doc(fs, "mapCache", String(mapId));
   await setDoc(docRef, data);
+};
+
+/**
+ * キャッシュされている全ての譜面データを取得します（最新20件）。
+ */
+export const getAllCachedMaps = async (): Promise<any[]> => {
+  console.log('getAllCachedMaps called');
+  const cacheRef = collection(fs, "mapCache");
+  const q = query(cacheRef, limit(50));
+  try {
+    const snap = await getDocs(q);
+    console.log('getAllCachedMaps success, count:', snap.docs.length);
+    return snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (err) {
+    console.error('getAllCachedMaps error:', err);
+    throw err;
+  }
 };
 
 /**
