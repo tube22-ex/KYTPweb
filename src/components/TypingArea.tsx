@@ -66,6 +66,16 @@ const LineItem: React.FC<any> = ({
   );
 };
 
+// コンボ倍率の計算ロジック
+const getComboMultiplier = (combo: number): number => {
+  if (combo >= 50) return 8;
+  if (combo >= 30) return 5;
+  if (combo >= 20) return 4;
+  if (combo >= 10) return 3;
+  if (combo >= 5) return 2;
+  return 1;
+};
+
 export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomState, onBackToMenu, onBlockChange, volume = 50 }) => {
   const [currentBlockIdx, setCurrentBlockIdx] = useState(0);
   const [currentLineIdx, setCurrentLineIdx] = useState(0);
@@ -366,7 +376,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
       if (isFinished) {
         setComboAnimKey(k => k + 1);
-        if (rs?.sharedScore !== undefined) incrementSharedScore(roomId, rs.sharedScore + 10);
+        // コンボ倍率をスコアに適用
+        const comboAfterIncrement = (rs?.sharedCombo || 0) + 1;
+        const mult = getComboMultiplier(comboAfterIncrement);
+        if (rs?.sharedScore !== undefined) incrementSharedScore(roomId, rs.sharedScore + 10 * mult);
 
         const currentLine = currentLineRef.current!;
         const currentChunkIdx = currentChunkIdxRef.current;
@@ -470,8 +483,11 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     }
   }, [roomState?.globalLineIdx, mapData.lines, isGameOver, isStarted]);
 
+
   if (!mapData || !mapData.displaySets || mapData.displaySets.length === 0 || !currentSet) return <div>Loading...</div>;
   const scoreText = (roomState?.sharedScore || 0).toString().padStart(6, '0');
+  const currentCombo = roomState?.sharedCombo || 0;
+  const multiplier = getComboMultiplier(currentCombo);
 
   return (
     <div className='flex flex-col items-center w-full max-w-none mx-auto pb-12 px-0'>
@@ -568,8 +584,28 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 </div>
 
                 <div className="flex flex-col items-end leading-none mt-1">
-                  <span className="text-[12px] font-black text-rose-100 uppercase italic text-right">Combo</span>
-                  <div key={comboAnimKey} className="text-4xl font-black italic text-white combo-pop leading-none">{roomState?.sharedCombo || 0}</div>
+                  <span className="text-[10px] font-black text-rose-100 uppercase italic text-right tracking-widest">Combo</span>
+                  <div key={comboAnimKey} className="flex items-baseline gap-1 combo-pop">
+                    <div className="text-4xl font-black italic text-white leading-none">{currentCombo}</div>
+                    {multiplier > 1 && (
+                      <div
+                        key={`mult-${multiplier}`}
+                        className="text-sm font-black italic leading-none px-1.5 py-0.5 rounded-full animate-bounce"
+                        style={{
+                          background: multiplier >= 8 ? 'linear-gradient(135deg, #ff0080, #ff6600)'
+                            : multiplier >= 5 ? 'linear-gradient(135deg, #7c3aed, #e11d48)'
+                            : multiplier >= 4 ? 'linear-gradient(135deg, #0ea5e9, #7c3aed)'
+                            : multiplier >= 3 ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
+                            : 'linear-gradient(135deg, #10b981, #3b82f6)',
+                          color: 'white',
+                          boxShadow: '0 0 15px rgba(255,255,255,0.4)',
+                          textShadow: '0 0 8px rgba(255,255,255,0.8)',
+                        }}
+                      >
+                        x{multiplier}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
