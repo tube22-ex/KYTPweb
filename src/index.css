@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Outfit:wght@400;600;800&family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Zen+Maru+Gothic:wght@400;700;900&family=M+PLUS+Rounded+1c:wght@400;700;900&family=Shippori+Mincho:wght@400;700&family=Potta+One&family=Noto+Sans+JP:wght@400;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Outfit:wght@400;600;800&family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Zen+Maru+Gothic:wght@400;700;900&family=M+PLUS+Rounded+1c:wght@400;700;900&family=Shippori+Mincho:wght@400;700&family=Potta+One&family=Noto+Sans+JP:wght@400;700;900&family=IBM+Plex+Mono:wght@400;700&family=Noto+Sans+Mono:wght@400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -17,14 +17,18 @@
 body {
   margin: 0;
   background: linear-gradient(135deg, #fff5f7 0%, #fff 50%, #f6f5ff 100%);
-  color: #374151; /* zinc-700 */
+  color: #374151;
+  /* zinc-700 */
   font-family: 'Zen Maru Gothic', sans-serif;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3, .font-kawaii {
+h1,
+h2,
+h3,
+.font-kawaii {
   font-family: 'M PLUS Rounded 1c', sans-serif;
 }
 
@@ -62,7 +66,7 @@ h1, h2, h3, .font-kawaii {
 
 .bubble-bg {
   background-image: radial-gradient(circle at 10% 20%, rgba(255, 133, 161, 0.05) 0%, transparent 20%),
-                    radial-gradient(circle at 90% 80%, rgba(206, 147, 216, 0.05) 0%, transparent 20%);
+    radial-gradient(circle at 90% 80%, rgba(206, 147, 216, 0.05) 0%, transparent 20%);
 }
 
 .combo-pop {
@@ -70,23 +74,34 @@ h1, h2, h3, .font-kawaii {
 }
 
 @keyframes pop {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.1);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* カスタムスクロールバー */
 ::-webkit-scrollbar {
   width: 10px;
 }
+
 ::-webkit-scrollbar-track {
   background: #fdf2f5;
 }
+
 ::-webkit-scrollbar-thumb {
   background: #ffb7c5;
   border-radius: 10px;
   border: 2px solid #fdf2f5;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: #ff85a1;
 }
@@ -105,4 +120,18 @@ h1, h2, h3, .font-kawaii {
   height: 20%;
   background: radial-gradient(ellipse at center, rgba(255, 133, 161, 0.1) 0%, transparent 70%);
   pointer-events: none;
+}
+
+/* スクロールバーを非表示にするためのユーティリティ */
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    /* IE, Edge */
+    scrollbar-width: none;
+    /* Firefox */
+  }
 }

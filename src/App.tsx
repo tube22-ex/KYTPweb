@@ -32,7 +32,7 @@ function App() {
   // 表示トグル
   const [showHistory, setShowHistory] = useState(true);
   const [showLyrics, setShowLyrics] = useState(true);
-  
+
   // 現在の再生/タイピングブロック (TypingArea から同期)
   const [activeBlockIdx, setActiveBlockIdx] = useState(0);
 
@@ -81,7 +81,7 @@ function App() {
 
   useEffect(() => {
     if (roomState?.mapId) {
-      if (!mapData || typeof mapData === 'object') {
+      if (!mapData) {
         fetchMapData(roomState.mapId).then(data => {
           setMapData(data);
           saveToHistory(data, roomState.mapId!);
@@ -92,14 +92,14 @@ function App() {
     } else {
       setMapData(null);
     }
-  }, [roomState?.mapId]);
+  }, [roomState?.mapId, mapData]);
 
   // 歌詞の自動スクロール (ブロック単位)
   useEffect(() => {
     if (mapData && lyricsScrollRef.current) {
       const activeBlock = lyricsScrollRef.current.querySelector(`[data-set-idx="${activeBlockIdx}"]`);
       if (activeBlock) {
-        activeBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        activeBlock.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     }
   }, [activeBlockIdx, mapData]);
@@ -157,7 +157,7 @@ function App() {
 
   // 履歴アイテムコンポーネント (よりコンパクト)
   const HistoryCard = ({ item }: { item: PlayedHistoryItem }) => (
-    <button 
+    <button
       onClick={() => fetchMapData(item.id).then(data => handleMapLoad(data, item.id))}
       className="group flex gap-2 bg-white border border-rose-50 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all p-2 text-left active:scale-95 w-full overflow-hidden"
     >
@@ -172,20 +172,19 @@ function App() {
   );
 
   // グリッド列の動的設定
-  const gridLayoutClass = `grid-cols-1 ${
-    showHistory && showLyrics ? 'xl:grid-cols-[200px_1fr_780px]' :
+  const gridLayoutClass = `grid-cols-1 ${showHistory && showLyrics ? 'xl:grid-cols-[200px_1fr_500px]' :
     showHistory ? 'xl:grid-cols-[200px_1fr]' :
-    showLyrics ? 'xl:grid-cols-[1fr_780px]' :
-    'grid-cols-1'
-  }`;
+      showLyrics ? 'xl:grid-cols-[1fr_500px]' :
+        'grid-cols-1'
+    }`;
 
   return (
-    <div 
-      className="flex flex-col items-center min-h-screen bg-gradient-to-br from-[#fff5f7] via-white to-[#f5f3ff] text-zinc-800 p-2 lg:p-4 overflow-x-hidden selection:bg-rose-200"
+    <div
+      className="flex flex-col items-center h-screen bg-gradient-to-br from-[#fff5f7] via-white to-[#f5f3ff] text-zinc-800 p-2 lg:p-4 overflow-hidden selection:bg-rose-200"
       style={{ fontFamily: selectedFont }}
     >
-      
-      <header className="flex flex-col items-center mb-6 relative z-10 w-full text-center">
+
+      <header className="flex flex-col items-center mb-6 relative z-10 w-full text-center flex-shrink-0">
         <h1 className="text-4xl font-black mb-1 font-premium bg-clip-text text-transparent bg-gradient-to-br from-rose-400 via-rose-500 to-purple-500 tracking-tighter drop-shadow-sm">
           通うタイピング
         </h1>
@@ -196,31 +195,31 @@ function App() {
         </div>
       </header>
 
-      {/* 緊密な3カラムグリッドレイアウト (フルワイド対応) */}
-      <div className={`w-full grid ${gridLayoutClass} gap-2 items-start relative z-10 px-0 flex-1 transition-all duration-500`}>
-        
+      {/* 高さ固定のコンテナ: h-[calc(100vh-180px)] 程度に設定し、
+          各カラムの内部をスクロールさせることで下端を揃える 
+      */}
+      <div className={`w-full grid ${gridLayoutClass} gap-4 relative z-10 px-0 flex-1 min-h-0 overflow-hidden`}
+        style={{ alignItems: 'stretch' }}
+      >
+
         {/* 左カラム: プレイ履歴 */}
         {showHistory ? (
-          <aside className="relative flex flex-col animate-in fade-in slide-in-from-left-4 duration-500">
-            <div className="sticky top-2">
-              <div className="flex items-center justify-between mb-3 ml-1">
-                <div className="flex items-center gap-1.5 ">
-                  <div className="w-1 h-3 bg-rose-400 rounded-full"></div>
-                  <h2 className="text-[8px] font-black text-rose-300 uppercase tracking-[0.2em] italic">History</h2>
-                </div>
-                <button 
-                  onClick={() => setShowHistory(false)}
-                  className="w-5 h-5 flex items-center justify-center text-rose-200 hover:text-rose-400 hover:bg-rose-50 transition-all rounded-full"
-                  title="Hide History"
-                >
-                  <span className="text-[10px]">◀</span>
-                </button>
+          <aside className="relative flex flex-col h-full animate-in fade-in slide-in-from-left-4 duration-500 min-h-0">
+            <div className="flex items-center justify-between mb-3 ml-1 flex-shrink-0">
+              <div className="flex items-center gap-1.5 ">
+                <div className="w-1.5 h-3 bg-rose-400 rounded-full"></div>
+                <h2 className="text-[10px] font-black text-rose-300 uppercase tracking-[0.2em] italic">History</h2>
               </div>
-              <div className="flex flex-col gap-1.5 pr-1">
-                {history.map(item => <HistoryCard key={item.id} item={item} />)}
-              </div>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="w-5 h-5 flex items-center justify-center text-rose-200 hover:text-rose-400 hover:bg-rose-50 transition-all rounded-full"
+              >
+                <span className="text-[10px]">◀</span>
+              </button>
+            </div>
+            <div className="flex flex-col gap-1.5 pr-1 overflow-y-auto custom-scrollbar flex-1 pb-4">
+              {history.map(item => <HistoryCard key={item.id} item={item} />)}
 
-              {/* 設定セクション */}
               <div className="mt-8 pr-1 animate-in fade-in slide-in-from-left-2 duration-700">
                 <div className="flex items-center gap-1.5 mb-3 ml-1">
                   <div className="w-1 h-3 bg-rose-400 rounded-full"></div>
@@ -229,16 +228,18 @@ function App() {
                 <div className="bg-white border border-rose-50 shadow-sm p-3 flex flex-col gap-3">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[9px] font-black text-rose-300 uppercase italic tracking-tighter">Font Style</label>
-                    <select 
+                    <select
                       value={selectedFont}
                       onChange={(e) => setSelectedFont(e.target.value)}
-                      className="w-full bg-zinc-50 border border-zinc-100 p-1.5 text-[10px] font-bold text-zinc-600 focus:outline-none focus:border-rose-200 transition-all appearance-none cursor-pointer"
+                      className="w-full bg-zinc-50 border border-zinc-100 p-1.5 text-[10px] font-bold text-zinc-600 focus:outline-none focus:border-rose-200 appearance-none cursor-pointer"
                     >
                       <option value="'M PLUS Rounded 1c', sans-serif">Rounded (Default)</option>
                       <option value="'Zen Maru Gothic', sans-serif">Kawaii (Round)</option>
                       <option value="'Noto Sans JP', sans-serif">Modern (Gothic)</option>
                       <option value="'Shippori Mincho', serif">Elegant (Mincho)</option>
                       <option value="'Potta One', cursive">Pop (Bold)</option>
+                      <option value="'Noto Sans Mono', monospace">Monospace (JP)</option>
+                      <option value="'Orbitron', sans-serif">Digital (Futuristic)</option>
                     </select>
                   </div>
                 </div>
@@ -246,134 +247,143 @@ function App() {
             </div>
           </aside>
         ) : (
-          <button 
+          <button
             onClick={() => setShowHistory(true)}
-            className="hidden xl:flex sticky top-4 left-0 w-6 h-20 bg-white/50 backdrop-blur-sm border-r border-y border-rose-100 items-center justify-center text-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all z-20 shadow-sm"
-            title="Show History"
+            className="hidden xl:flex h-20 self-start w-6 bg-white/50 backdrop-blur-sm border-r border-y border-rose-100 items-center justify-center text-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all z-20 shadow-sm mt-8"
           >
             <span className="text-xs transform scale-y-150 rotate-180">◀</span>
           </button>
         )}
 
         {/* 中央カラム: プレイヤー */}
-        <main className="flex-1 flex flex-col w-full min-w-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="flex items-center gap-1.5 mb-3 ml-1">
+        <main className="flex-1 flex flex-col min-w-0 h-full animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto scrollbar-hide">
+          {/* ヘッダーラベル */}
+          <div className="flex items-center gap-1.5 mb-3 ml-1 flex-shrink-0">
             <div className="w-1.5 h-3 bg-rose-400 rounded-full"></div>
             <h2 className="text-[10px] font-black text-rose-300 uppercase tracking-[0.2em] italic">Player</h2>
           </div>
 
-          {!inRoom ? (
-            <div className="bg-white border-4 border-white shadow-xl p-8 rounded-none w-full max-w-md mx-auto relative z-10 overflow-hidden bubble-bg animate-in zoom-in-95 duration-500">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-rose-400 to-purple-400"></div>
-              <div className="mb-6 text-center">
-                <h1 className="text-3xl font-black font-premium text-zinc-700 italic uppercase tracking-tighter mb-1">部屋選択</h1>
-                <p className="text-[10px] text-rose-300 font-black uppercase tracking-[0.2em]">部屋名を入力して入室</p>
-              </div>
-              <div className="flex flex-col gap-4">
-                <input
-                  type="text" placeholder="ルームID" value={roomId}
-                  onChange={e => setRoomId(e.target.value)}
-                  className="px-4 py-3 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black text-zinc-700 shadow-inner text-sm"
-                />
-                <input
-                  type="text" placeholder="プレイヤー名" value={playerName}
-                  onChange={e => setPlayerName(e.target.value)}
-                  className="px-4 py-3 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black text-zinc-700 shadow-inner text-sm"
-                />
-                <button onClick={handleJoin} className="w-full py-4 bg-rose-400 hover:bg-rose-500 text-white font-black shadow-lg transition-all active:scale-95 text-sm uppercase font-premium">
-                  入室
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="w-full flex flex-col">
-              {!mapData ? (
-                <div className="w-full flex flex-col gap-6 items-center">
-                  <div className="w-full transform transition-all animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <MapLoader onLoad={handleMapLoad} />
-                  </div>
-                  <PlayerLane roomState={roomState} playerId={playerId} />
+          {/* コンテンツエリア */}
+          <div className="flex-1">
+            {!inRoom ? (
+              /* 入室画面 */
+              <div className="bg-white border-4 border-white shadow-xl p-8 rounded-none w-full max-w-md mx-auto relative z-10 overflow-hidden bubble-bg animate-in zoom-in-95 duration-500">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-rose-400 to-purple-400"></div>
+                <div className="mb-6 text-center">
+                  <h1 className="text-3xl font-black font-premium text-zinc-700 italic uppercase tracking-tighter mb-1">部屋選択</h1>
+                  <p className="text-[10px] text-rose-300 font-black uppercase tracking-[0.2em]">部屋名を入力して入室</p>
                 </div>
-              ) : (
-                <div className="w-full transform transition-all animate-in fade-in zoom-in-95 duration-1000 relative">
-                  {/* ルーム・プレイヤー情報 (プレイヤーの内側に配置) */}
-                  <div className="absolute top-2 left-2 z-50 bg-white/80 backdrop-blur-sm px-3 py-1 flex items-center gap-2 border border-zinc-100 shadow-sm pointer-events-none">
-                    <span className="font-black text-[10px] text-rose-400 tabular-nums"># {roomId}</span>
-                    <div className="w-[1px] h-2 bg-zinc-200"></div>
-                    <span className="font-black text-[10px] text-zinc-500 uppercase italic">{playerName}</span>
-                  </div>
-
-                  <TypingArea
-                    key={roomState?.mapId || 'none'}
-                    mapData={mapData}
-                    roomId={roomId}
-                    playerId={playerId}
-                    roomState={roomState}
-                    onBackToMenu={handleBackToMenu}
-                    onBlockChange={(idx) => setActiveBlockIdx(idx)}
+                <div className="flex flex-col gap-4">
+                  <input
+                    type="text"
+                    placeholder="ルームID"
+                    value={roomId}
+                    onChange={e => setRoomId(e.target.value)}
+                    className="px-4 py-3 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black text-zinc-700 shadow-inner text-sm"
                   />
+                  <input
+                    type="text"
+                    placeholder="プレイヤー名"
+                    value={playerName}
+                    onChange={e => setPlayerName(e.target.value)}
+                    className="px-4 py-3 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black text-zinc-700 shadow-inner text-sm"
+                  />
+                  <button
+                    onClick={handleJoin}
+                    className="w-full py-4 bg-rose-400 hover:bg-rose-500 text-white font-black shadow-lg transition-all active:scale-95 text-sm uppercase font-premium"
+                  >
+                    入室
+                  </button>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            ) : (
+              /* ルーム内画面 */
+              <div className="w-full flex flex-col h-full">
+                {!mapData ? (
+                  /* マップ選択待ち状態 */
+                  <div className="w-full flex flex-col gap-6 items-center">
+                    <div className="w-full transform transition-all animate-in fade-in slide-in-from-bottom-4 duration-700">
+                      <MapLoader onLoad={handleMapLoad} />
+                    </div>
+                    <PlayerLane roomState={roomState} playerId={playerId} />
+                  </div>
+                ) : (
+                  /* プレイ（タイピング）状態 */
+                  <div className="w-full h-full transform transition-all animate-in fade-in zoom-in-95 duration-1000 relative">
+                    {/* プレイヤー情報バッジ */}
+                    <div className="absolute top-2 left-2 z-50 bg-white/80 backdrop-blur-sm px-3 py-1 flex items-center gap-2 border border-zinc-100 shadow-sm pointer-events-none">
+                      <span className="font-black text-[10px] text-rose-400 tabular-nums"># {roomId}</span>
+                      <div className="w-[1px] h-2 bg-zinc-200"></div>
+                      <span className="font-black text-[10px] text-zinc-500 uppercase italic">{playerName}</span>
+                    </div>
+
+                    <TypingArea
+                      key={roomState?.mapId || 'none'}
+                      mapData={mapData}
+                      roomId={roomId}
+                      playerId={playerId}
+                      roomState={roomState}
+                      onBackToMenu={handleBackToMenu}
+                      onBlockChange={(idx) => setActiveBlockIdx(idx)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </main>
 
         {/* 右カラム: 歌詞リスト */}
         {showLyrics ? (
-          <aside className="relative flex flex-col animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden h-full">
-            <div className="sticky top-2 flex flex-col max-h-[calc(100vh-80px)]">
-              <div className="flex items-center justify-between mb-3 ml-1">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-3 bg-purple-400 rounded-full"></div>
-                  <h2 className="text-[10px] font-black text-purple-300 uppercase tracking-[0.4em] italic">Guide</h2>
-                </div>
-                <button 
-                  onClick={() => setShowLyrics(false)}
-                  className="w-5 h-5 flex items-center justify-center text-purple-200 hover:text-purple-400 hover:bg-purple-50 transition-all rounded-full"
-                  title="Hide Guide"
-                >
-                  <span className="text-[10px]">▶</span>
-                </button>
+          <aside className="relative flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden">
+            <div className="flex items-center justify-between mb-3 ml-1 flex-shrink-0">
+              <div className="flex items-center gap-1.5">
+                <div className="w-1.5 h-3 bg-purple-400 rounded-full"></div>
+                <h2 className="text-[10px] font-black text-purple-300 uppercase tracking-[0.4em] italic">Guide</h2>
               </div>
-              <div 
-                ref={lyricsScrollRef}
-                className="columns-3 gap-3 bg-white border border-zinc-100 shadow-sm overflow-y-auto custom-scrollbar p-3 min-h-0"
+              <button
+                onClick={() => setShowLyrics(false)}
+                className="w-5 h-5 flex items-center justify-center text-purple-200 hover:text-purple-400 hover:bg-purple-50 transition-all rounded-full"
               >
-                {mapData?.displaySets.map((set, setIdx) => {
-                  // 現在再生/表示中のブロックか
-                  const isActive = setIdx === activeBlockIdx;
-                  return (
-                    <div 
-                      key={setIdx} 
-                      data-set-idx={setIdx}
-                      className={`break-inside-avoid mb-4 border-l-4 p-3 transition-all rounded-r-md ${isActive ? 'border-rose-400 bg-rose-100 shadow-md ring-1 ring-rose-200' : 'border-zinc-50 bg-zinc-50/5'}`}
-                    >
-                      <div className={`text-[10px] font-black uppercase tracking-widest italic mb-2 transition-colors ${isActive ? 'text-rose-500 opacity-100' : 'text-rose-300 opacity-60'}`}>Block {setIdx + 1}</div>
-                      <div className="flex flex-col gap-2">
-                        {set.lines.map((line, lIdx) => {
-                          // 読み情報を結合し、英語は大文字、スペースは全角に変換
-                          const hiragana = line.chunks.map(c => c.text).join('').toUpperCase().replace(/ /g, '　');
-                          return (
-                            <div 
-                              key={lIdx} 
-                              className={`font-black leading-tight transition-all ${isActive ? 'text-zinc-900 text-[20px] drop-shadow-sm' : 'text-zinc-400/80 text-[13px]'}`}
-                            >
-                              {hiragana}
-                            </div>
-                          );
-                        })}
-                      </div>
+                <span className="text-[10px]">▶</span>
+              </button>
+            </div>
+            {/* Guideのコンテンツエリアを flex-1 + overflow-y-auto にして高さを揃える */}
+            <div
+              ref={lyricsScrollRef}
+              className="flex-1 bg-white border border-zinc-100 shadow-sm overflow-y-auto custom-scrollbar p-3"
+            >
+              {mapData?.displaySets.map((set, setIdx) => {
+                const isActive = setIdx === activeBlockIdx;
+                return (
+                  <div
+                    key={setIdx}
+                    data-set-idx={setIdx}
+                    className={`break-inside-avoid mb-4 border-l-4 p-4 transition-all rounded-r-md scroll-mt-4 ${isActive ? 'border-rose-400 bg-rose-100 shadow-xl ring-1 ring-rose-200 scale-[1.02] z-10' : 'border-zinc-50 bg-zinc-50/5'}`}
+                  >
+                    <div className={`text-[10px] font-black uppercase tracking-widest italic mb-2 transition-colors ${isActive ? 'text-rose-500 opacity-100' : 'text-rose-300 opacity-60'}`}>Block {setIdx + 1}</div>
+                    <div className="flex flex-col gap-2">
+                      {set.lines.map((line, lIdx) => {
+                        const hiragana = line.chunks.map((c: any) => c.text).join('');
+                        return (
+                          <div
+                            key={lIdx}
+                            className={`font-black leading-tight transition-all ${isActive ? 'text-zinc-900 text-[20px] drop-shadow-sm' : 'text-zinc-400 text-[13px]'}`}
+                          >
+                            {hiragana}
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
             </div>
           </aside>
         ) : (
-          <button 
+          <button
             onClick={() => setShowLyrics(true)}
-            className="hidden xl:flex sticky top-4 right-0 w-6 h-20 bg-white/50 backdrop-blur-sm border-l border-y border-purple-100 items-center justify-center text-purple-300 hover:bg-purple-50 hover:text-purple-500 transition-all z-20 shadow-sm"
-            title="Show Guide"
+            className="hidden xl:flex h-20 self-start w-6 bg-white/50 backdrop-blur-sm border-l border-y border-purple-100 items-center justify-center text-purple-300 hover:bg-purple-50 hover:text-purple-500 transition-all z-20 shadow-sm mt-8"
           >
             <span className="text-xs transform scale-y-150">▶</span>
           </button>
@@ -381,7 +391,7 @@ function App() {
 
       </div>
 
-      <footer className="mt-auto py-6 opacity-10 text-[8px] font-black uppercase tracking-[0.5em] pointer-events-none relative z-10 w-full text-center">
+      <footer className="py-2 opacity-10 text-[8px] font-black uppercase tracking-[0.5em] pointer-events-none relative z-10 w-full text-center flex-shrink-0">
         歌謡タイピング
       </footer>
     </div>

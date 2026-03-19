@@ -395,8 +395,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
   return (
     <div className='flex flex-col items-center w-full max-w-none mx-auto pb-12 px-0'>
-      {/* プレイ画面全体をくくる枠 (角を丸くせず、paddingを0に) */}
-      <div className="w-full border-4 border-white rounded-none bg-white/5 backdrop-blur-sm p-0 flex flex-col gap-0 shadow-2xl overflow-hidden">
+      {/* プレイ画面全体をくくる枠 (角を丸くせず、paddingを0に、上辺のボーダーのみ削る) */}
+      <div className="w-full border-x-4 border-b-4 border-white rounded-none bg-white/5 backdrop-blur-sm p-0 flex flex-col gap-0 shadow-2xl overflow-hidden">
 
         {/* 1. プレイヤーレーン (背景を透過させて枠に密着) */}
         <div className="w-full bg-white/10 border-b-2 border-white/20">

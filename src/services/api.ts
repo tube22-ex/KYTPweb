@@ -297,7 +297,7 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
   // 1. キャッシュをチェック
   try {
     const cached = await getCachedMapData(mapId);
-    if (cached) {
+    if (cached && (cached as any).displaySets) {
       console.log('Using cached map data for:', mapId);
       return cached as ParseResult;
     }
