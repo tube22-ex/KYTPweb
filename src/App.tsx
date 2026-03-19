@@ -294,6 +294,53 @@ function App() {
                   >
                     入室
                   </button>
+
+                  {/* 稼働中のルーム一覧 */}
+                  <div className="mt-8 pt-6 border-t border-zinc-100">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-1 h-3 bg-purple-400 rounded-full"></div>
+                      <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest italic">稼働中の部屋</h3>
+                    </div>
+                    
+                    {!allRooms || Object.keys(allRooms).length === 0 ? (
+                      <div className="text-[10px] text-zinc-300 italic text-center py-4 bg-zinc-50 border border-dashed border-zinc-200">
+                        現在稼働中の部屋はありません
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                        {Object.entries(allRooms).map(([rid, state]) => {
+                          const pCount = Object.keys(state.players || {}).length;
+                          const isPlaying = state.status === 'playing';
+                          return (
+                            <button
+                              key={rid}
+                              onClick={() => {
+                                setRoomId(rid);
+                                // 名前が入力済みなら即座にジョインを試みることも可能だが、
+                                // 確認のためにIDを入れるだけに留める
+                              }}
+                              className="group flex items-center justify-between p-3 bg-white border border-zinc-100 hover:border-rose-200 hover:bg-rose-50/30 transition-all text-left"
+                            >
+                              <div className="flex flex-col">
+                                <span className="text-xs font-black text-zinc-600 group-hover:text-rose-500"># {rid}</span>
+                                <span className="text-[9px] font-bold text-zinc-400">
+                                  {isPlaying ? '🎮 プレイ中' : '⏳ 待機中'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="flex -space-x-1">
+                                  {Array.from({ length: Math.min(3, pCount) }).map((_, i) => (
+                                    <div key={i} className="w-4 h-4 rounded-full border-2 border-white bg-rose-200"></div>
+                                  ))}
+                                </div>
+                                <span className="text-[10px] font-black text-rose-300">{pCount} 名</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
