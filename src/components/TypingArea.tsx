@@ -221,6 +221,22 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           const absStart = firstM !== -1 ? nLines[firstM].absLineIdx : -1;
           updatePlayerProgress(roomId, playerId, absStart, 0, 0, 0, 0, 0, 0, '', '');
         }
+
+        // 【コンボルール】ブロックが時間切れになったとき、打ち残しがあればコンボリセット
+        // ホストのみが判定してFirebaseに書き込む（重複防止）
+        if (isHost) {
+          const currentGl = roomStateRef.current?.globalLineIdx ?? 0;
+          const currentGc = roomStateRef.current?.globalChunkIdx ?? 0;
+          const currentLines = mapData.displaySets[currentBlockIdx].lines;
+          // ブロックの最後のラインの最後のチャンクまで打ち終わっていなければリセット
+          const lastLine = currentLines[currentLines.length - 1];
+          const lastLineFinished = lastLine && (currentGl > lastLine.absLineIdx || (currentGl === lastLine.absLineIdx && currentGc >= lastLine.chunks.length));
+          if (!lastLineFinished) {
+            updateSharedCombo(roomId, 0, roomStateRef.current?.maxSharedCombo || 0);
+            // globalも次のブロックの先頭にリセット
+            updateGlobalProgress(roomId, nLines[0]?.absLineIdx ?? currentGl + 1, 0);
+          }
+        }
       }
     }, 50);
     return () => clearInterval(int);
@@ -346,24 +362,33 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     if (!chunk) return;
     const rs = roomStateRef.current;
     if (keygraph.next(e.key.toLowerCase())) {
-      setComboAnimKey(k => k + 1);
-      if (rs?.sharedScore !== undefined) incrementSharedScore(roomId, rs.sharedScore + 10);
-
       const isFinished = keygraph.is_finished();
 
       if (isFinished) {
+        setComboAnimKey(k => k + 1);
+        if (rs?.sharedScore !== undefined) incrementSharedScore(roomId, rs.sharedScore + 10);
+
         const currentLine = currentLineRef.current!;
         const currentChunkIdx = currentChunkIdxRef.current;
         const currentLineIdx = currentLineIdxRef.current;
         const currentSet = currentSetRef.current;
         const gl = rs?.globalLineIdx ?? 0;
         const gc = rs?.globalChunkIdx ?? 0;
-        if (currentLine.absLineIdx === gl && currentChunkIdx === gc) {
+
+        // ===【コンボルール】===
+        // 正しい順番（globalLineIdx・globalChunkIdx と一致）で打てたかチェック
+        const isCorrectOrder = currentLine.absLineIdx === gl && currentChunkIdx === gc;
+
+        if (isCorrectOrder) {
+          // 正順: コンボ加算 + globalを進める
           const combo = (rs?.sharedCombo || 0) + 1;
           updateSharedCombo(roomId, combo, Math.max(rs?.maxSharedCombo || 0, combo));
-          let nl = gl, nc = gc + 1;
+          let nl = currentLine.absLineIdx, nc = currentChunkIdx + 1;
           if (nc >= currentLine.chunks.length) { nl++; nc = 0; }
           updateGlobalProgress(roomId, nl, nc);
+        } else {
+          // 順番違反: コンボリセット（0にする）
+          updateSharedCombo(roomId, 0, rs?.maxSharedCombo || 0);
         }
         let nextLineIdxForFirebase = currentLine.absLineIdx;
         let nextChunkIdxForFirebase = currentChunkIdx + 1;
