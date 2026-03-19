@@ -31,7 +31,7 @@ const LineItem: React.FC<any> = ({
 
   return (
     <div className={`py-1 px-4 transition-all duration-300 rounded-none border-l-4 ${isActiveLine ? 'bg-rose-50/50 border-rose-400 shadow-sm relative z-10 scale-[1.01]' : 'border-transparent'}`}>
-      <div className='text-4xl font-black leading-tight flex flex-wrap gap-x-4 tracking-tighter'>
+      <div className='max-[1920px]:text-[clamp(0.8rem,1.5vw,1.1rem)] min-[1921px]:text-[clamp(1rem,2vw,1.8rem)] font-black leading-tight flex flex-wrap gap-x-4 tracking-tighter text-zinc-600'>
         {line.chunks.map((chunk: any, i: number) => {
           const isChunkActive = isActiveLine && i === currentChunkIdx;
           const isOpponentActiveChunk = isSomeoneElseActive && i === (opponentChunkIdx ?? 0);
@@ -306,69 +306,69 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     const chunk = currentLine?.chunks?.[currentChunkIdx];
     if (!chunk) return;
     if (keygraph.next(e.key.toLowerCase())) {
-      try { sound.play(); } catch (_) { }
+      // sound.play(); // 打鍵音は不要との要望により無効化
       setComboAnimKey(k => k + 1);
       if (roomState?.sharedScore !== undefined) incrementSharedScore(roomId, roomState.sharedScore + 10);
 
       const isFinished = keygraph.is_finished();
 
-        if (isFinished) {
-          const gl = roomState?.globalLineIdx ?? 0;
-          const gc = roomState?.globalChunkIdx ?? 0;
-          if (currentLine.absLineIdx === gl && currentChunkIdx === gc) {
-            const combo = (roomState?.sharedCombo || 0) + 1;
-            updateSharedCombo(roomId, combo, Math.max(roomState?.maxSharedCombo || 0, combo));
-            let nl = gl, nc = gc + 1;
-            if (nc >= currentLine.chunks.length) { nl++; nc = 0; }
-            updateGlobalProgress(roomId, nl, nc);
-          }
-          let nextLineIdxForFirebase = currentLine.absLineIdx;
-          let nextChunkIdxForFirebase = currentChunkIdx + 1;
+      if (isFinished) {
+        const gl = roomState?.globalLineIdx ?? 0;
+        const gc = roomState?.globalChunkIdx ?? 0;
+        if (currentLine.absLineIdx === gl && currentChunkIdx === gc) {
+          const combo = (roomState?.sharedCombo || 0) + 1;
+          updateSharedCombo(roomId, combo, Math.max(roomState?.maxSharedCombo || 0, combo));
+          let nl = gl, nc = gc + 1;
+          if (nc >= currentLine.chunks.length) { nl++; nc = 0; }
+          updateGlobalProgress(roomId, nl, nc);
+        }
+        let nextLineIdxForFirebase = currentLine.absLineIdx;
+        let nextChunkIdxForFirebase = currentChunkIdx + 1;
 
-          let nextChunkToBuild = null;
+        let nextChunkToBuild = null;
 
-          if (nextChunkIdxForFirebase < currentLine.chunks.length) {
-            setCurrentChunkIdx(nextChunkIdxForFirebase);
-            nextChunkToBuild = currentLine.chunks[nextChunkIdxForFirebase];
-          } else {
-            let nextM = -1;
-            if (currentSet?.lines) {
-              for (let i = currentLineIdx + 1; i < currentSet.lines.length; i++) {
-                if (isMine(currentSet.lines[i].absLineIdx)) { nextM = i; break; }
-              }
-            }
-            if (nextM !== -1) {
-              setCurrentLineIdx(nextM);
-              setCurrentChunkIdx(0);
-              nextLineIdxForFirebase = currentSet.lines[nextM].absLineIdx;
-              nextChunkIdxForFirebase = 0;
-              nextChunkToBuild = currentSet.lines[nextM].chunks[0];
-            } else {
-              setCurrentLineIdx(-1);
-              nextLineIdxForFirebase = -1;
-              nextChunkIdxForFirebase = 0;
-            }
-          }
-
-          if (roomId && playerId) {
-            updatePlayerProgress(roomId, playerId, nextLineIdxForFirebase, nextChunkIdxForFirebase, 0, 0, 0, nextChunkIdxForFirebase, 0, '', '');
-          }
-
-          // 次のチャンクを即時ビルドして待機時間をゼロにする
-          if (nextChunkToBuild) {
-            const key = `${nextLineIdxForFirebase}-${nextChunkIdxForFirebase}`;
-            keygraph.reset();
-            keygraph.build(nextChunkToBuild.text);
-            setIsEngineReady(true);
-            preparedRef.current = key;
-          } else {
-            setIsEngineReady(false);
-          }
+        if (nextChunkIdxForFirebase < currentLine.chunks.length) {
+          setCurrentChunkIdx(nextChunkIdxForFirebase);
+          nextChunkToBuild = currentLine.chunks[nextChunkIdxForFirebase];
         } else {
-          if (roomId && playerId && currentLine) {
-            updatePlayerProgress(roomId, playerId, currentLine.absLineIdx, currentChunkIdx, 0, 0, 0, currentChunkIdx, keygraph.seq_done()?.length || 0, keygraph.seq_done() || '', chunk.text);
+          let nextM = -1;
+          if (currentSet?.lines) {
+            for (let i = currentLineIdx + 1; i < currentSet.lines.length; i++) {
+              if (isMine(currentSet.lines[i].absLineIdx)) { nextM = i; break; }
+            }
+          }
+          if (nextM !== -1) {
+            setCurrentLineIdx(nextM);
+            setCurrentChunkIdx(0);
+            nextLineIdxForFirebase = currentSet.lines[nextM].absLineIdx;
+            nextChunkIdxForFirebase = 0;
+            nextChunkToBuild = currentSet.lines[nextM].chunks[0];
+          } else {
+            setCurrentLineIdx(-1);
+            nextLineIdxForFirebase = -1;
+            nextChunkIdxForFirebase = 0;
           }
         }
+
+        if (roomId && playerId) {
+          updatePlayerProgress(roomId, playerId, nextLineIdxForFirebase, nextChunkIdxForFirebase, 0, 0, 0, nextChunkIdxForFirebase, 0, '', '');
+        }
+
+        // 次のチャンクを即時ビルドして待機時間をゼロにする
+        if (nextChunkToBuild) {
+          const key = `${nextLineIdxForFirebase}-${nextChunkIdxForFirebase}`;
+          keygraph.reset();
+          keygraph.build(nextChunkToBuild.text);
+          setIsEngineReady(true);
+          preparedRef.current = key;
+        } else {
+          setIsEngineReady(false);
+        }
+      } else {
+        if (roomId && playerId && currentLine) {
+          updatePlayerProgress(roomId, playerId, currentLine.absLineIdx, currentChunkIdx, 0, 0, 0, currentChunkIdx, keygraph.seq_done()?.length || 0, keygraph.seq_done() || '', chunk.text);
+        }
+      }
     } else { try { miss_sound.play(); } catch (_) { } }
   };
 
@@ -481,7 +481,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 </div>
               )}
 
-              <div className="h-20 flex items-center justify-between px-10">
+              <div className="h-16 flex items-center justify-between px-10">
                 <div className="flex flex-col items-start leading-none mt-1">
                   <span className="text-[12px] font-black text-rose-100 uppercase italic">Target</span>
                   <span className="text-sm font-black text-white italic">{isMe ? '打って！' : '待機'}</span>
@@ -490,7 +490,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 <div className="flex-1 flex items-center justify-start pl-10">
                   {isEngineReady && isMe ? (
                     <div className="flex items-center gap-2">
-                      <span className="text-4xl font-black italic tracking-wider text-white drop-shadow-lg">
+                      <span className="max-[1920px]:text-2xl min-[1921px]:text-4xl font-black italic tracking-wider text-white drop-shadow-lg">
                         <span className="opacity-30">{(keygraph.key_done() || '').toUpperCase()}</span>
                         <span>{(keygraph.key_candidate() || '').toUpperCase()}</span>
                       </span>
@@ -511,14 +511,14 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
             {/* 4. ダッシュボードパネル (横に並べつつ、枠に密着) */}
             <div className="w-full flex">
-              {/* 左パネル: スコア */}
-              <div className="flex-1 p-6 flex flex-col items-center justify-center bubble-bg bg-white border-r-2 border-white/10">
+              {/* 左パネル: スコア (flex-[1_1_0%]で幅を強制固定) */}
+              <div className="flex-[1_1_0%] min-w-0 p-6 flex flex-col items-center justify-center bubble-bg bg-white">
                 <span className="text-[12px] font-black text-zinc-400 uppercase tracking-widest mb-1">合計スコア</span>
                 <div className="text-4xl font-black text-zinc-700 tracking-tighter">{scoreText}</div>
               </div>
 
-              {/* 中央パネル: ビデオ (サイズ拡大) */}
-              <div className="w-[540px] aspect-video bg-black relative group border-r-2 border-white/10">
+              {/* 中央パネル: ビデオ (柔軟なサイズ調整で中央を維持) */}
+              <div className="flex-[2] min-w-0 max-w-[540px] aspect-video bg-black relative group border-x-2 border-white/10 flex flex-col items-center justify-center">
                 <div id='youtube-player' className="w-full h-full" />
               </div>
 

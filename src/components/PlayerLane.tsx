@@ -24,16 +24,16 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
 
   return (
     <div className="w-full relative">
-      {/* 舞台エリア (さらに薄く調整) */}
-      <div className="relative w-full aspect-[21/3] overflow-hidden stage-floor-cute group bubble-bg rounded-none border-x-4 border-white shadow-inner">
+      {/* 舞台エリア (スクロールバーを完全に禁止し、全員を表示) */}
+      <div className="relative w-full aspect-[21/4] stage-floor-cute group bubble-bg rounded-none border-x-4 border-white shadow-inner pt-10 overflow-hidden scrollbar-hide">
         {/* 装飾的な雲やキラキラなどを背景に追加可能 */}
         <div className="absolute top-4 left-10 w-24 h-8 bg-white/40 rounded-full blur-xl animate-pulse" />
         <div className="absolute bottom-10 right-20 w-32 h-12 bg-white/30 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '1s' }} />
 
-        {/* プレイヤー整列 */}
-        <div className="absolute inset-0 flex items-end justify-center px-16 pb-0 gap-12 z-20">
+        {/* プレイヤー整列 (隙間を自動調整して全員収める) */}
+        <div className="absolute inset-x-0 bottom-0 flex items-end justify-center px-4 pb-0 gap-2 sm:gap-4 md:gap-8 lg:gap-12 z-20 min-w-0 overflow-hidden">
           {players.map(p => (
-            <div key={p.id} className="flex-1 flex flex-col items-center transition-all duration-500 hover:scale-110 relative">
+            <div key={p.id} className="flex-1 min-w-0 flex flex-col items-center transition-all duration-500 hover:scale-110 relative">
               {/* キャラクター (高さを抑える) */}
               <div className="relative h-24 w-full flex flex-col items-center justify-end">
                 {/* ホスト/YOUタグ (さらに強調) */}
