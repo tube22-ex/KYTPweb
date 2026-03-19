@@ -252,6 +252,89 @@ h3,
   flex-direction: column !important;
 }
 
+/* ロビー画面（曲選択）専用スタイル */
+.lobby-screen .center-column {
+  width: 1150px !important; /* 860 + 290 (Guide分を吸収) */
+  min-width: 1150px !important;
+  max-width: 1150px !important;
+}
+
+.lobby-screen .right-column,
+.lobby-screen .guide-column,
+.lobby-screen .stage-container {
+  display: none !important;
+}
+
+/* 6列グリッド */
+.chart-grid {
+  display: grid !important;
+  grid-template-columns: repeat(6, 1fr) !important;
+  gap: 6px !important;
+  overflow-y: auto !important;
+  max-height: calc(720px - 140px) !important;
+  padding: 4px !important;
+}
+
+/* コンパクトなカード */
+.chart-card {
+  display: flex !important;
+  flex-direction: column !important;
+  cursor: pointer !important;
+  background: white !important;
+  border: 2px solid #f3f4f6 !important;
+  transition: all 0.2s ease !important;
+}
+
+.chart-card:hover {
+  border-color: #fb7185 !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 12px rgba(251, 113, 133, 0.15) !important;
+}
+
+.chart-card img {
+  width: 100% !important;
+  aspect-ratio: 1 / 1 !important;
+  object-fit: cover !important;
+  background: #f9fafb !important;
+}
+
+.chart-card .title {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  margin: 2px 0 0 0 !important;
+  padding: 0 4px !important;
+  color: #374151 !important;
+  line-height: 1.2 !important;
+}
+
+.chart-card .artist {
+  font-size: 10px !important;
+  color: #9ca3af !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  padding: 0 4px 2px 4px !important;
+  margin: 0 !important;
+  line-height: 1.1 !important;
+}
+
+/* 入力セクション圧縮 */
+.input-section {
+  padding: 4px 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  background: white !important;
+  border-bottom: 1px solid #f3f4f6 !important;
+}
+
+.input-section .description {
+  display: none !important; /* 説明文は場所を取るので非表示か、プレースホルダーに統合 */
+}
+
 /* 各エリアの高さ固定 */
 .stage-container {
   height: 180px !important;

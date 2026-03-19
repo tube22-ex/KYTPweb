@@ -70,14 +70,14 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
   };
 
   return (
-    <div className="bg-white border-4 border-white shadow-[0_10px_30px_rgba(255,133,161,0.05)] rounded-none w-full h-full flex flex-col relative overflow-hidden bubble-bg input-section" style={{ padding: '4px 0', margin: 0, gap: '4px' }}>
+    <div className="bg-white border-4 border-white shadow-[0_10px_30px_rgba(255,133,161,0.05)] rounded-none w-full h-full flex flex-col relative overflow-hidden bubble-bg input-section">
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1 description">
         <p className="text-[10px] text-rose-300 font-black uppercase tracking-widest italic" style={{ margin: '0 0 2px 0', lineHeight: 1.2 }}>譜面IDを入力してフォーカスを外すとプレビューが表示されます</p>
       </div>
 
       <div className="flex flex-col gap-1">
-        <div className="flex input-row" style={{ margin: '2px 0', gap: '4px' }}>
+        <div className="flex input-row flex-1" style={{ gap: '4px' }}>
           <div className="flex-1 relative">
             <input
               type="text"
@@ -86,21 +86,21 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
               onChange={(e) => setMapId(e.target.value)}
               onBlur={handleBlur}
               className="w-full rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black placeholder:text-zinc-300 text-zinc-700 shadow-inner"
-              style={{ height: '36px', padding: '0 8px' }}
+              style={{ height: '32px', padding: '0 8px', fontSize: '12px' }}
             />
           </div>
           <button
             onClick={handleLoad}
             disabled={loading}
             className="px-4 bg-rose-400 hover:bg-rose-500 text-white font-black rounded-none shadow-lg transition-all active:scale-[0.95] disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2 group/btn font-premium"
-            style={{ height: '36px' }}
+            style={{ height: '32px', fontSize: '11px' }}
           >
             {loading ? (
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
             ) : (
               <>
                 読み込む
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover/btn:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 group-hover/btn:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
               </>

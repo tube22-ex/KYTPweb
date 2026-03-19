@@ -257,7 +257,7 @@ export default function App() {
         </div>
       </header>
 
-      <div className="flex flex-row items-start relative z-10 flex-1 w-full layout-root"
+      <div className={`flex flex-row items-start relative z-10 flex-1 w-full layout-root ${!mapData ? 'lobby-screen' : ''}`}
         style={{ margin: 0, padding: 0 }}
       >
         {/* 左カラム: プレイ履歴 (130px) */}
@@ -324,7 +324,31 @@ export default function App() {
 
         {/* 中央カラム: プレイヤー (860px) */}
         <main className="center-column animate-in fade-in slide-in-from-bottom-4 duration-500 shrink-0">
-          <div className="flex items-center gap-1.5 mb-3 ml-1 flex-shrink-0">
+          {!mapData && roomState && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#fff0f5] border-b-2 border-rose-400 flex-shrink-0 animate-in fade-in slide-in-from-top-1 duration-300">
+              {/* 自分 */}
+              <div className="flex items-center gap-2 pr-3 border-r border-rose-100">
+                <div 
+                  className="w-3.5 h-3.5 rounded-full shadow-sm border border-white" 
+                  style={{ background: roomState.players[playerId]?.color || '#ccc' }} 
+                />
+                <span className="text-[14px] font-black text-zinc-700 italic tracking-tighter uppercase">{playerName}</span>
+                <span className="text-[9px] font-black text-rose-300 bg-white px-1 rounded-sm border border-rose-50 shadow-sm leading-none py-0.5">YOU</span>
+              </div>
+              
+              {/* 他のプレイヤー */}
+              <div className="flex items-center gap-4 pl-1">
+                {Object.values(roomState.players).filter(p => p.id !== playerId).map(p => (
+                  <div key={p.id} className="flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity">
+                    <div className="w-2.5 h-2.5 rounded-full border border-white shadow-[0_0_4px_rgba(0,0,0,0.1)]" style={{ background: p.color }} />
+                    <span className="text-[12px] font-bold text-zinc-500 italic tracking-tight">{p.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-1.5 mb-3 ml-1 flex-shrink-0 mt-2">
             <div className="w-1.5 h-3 bg-rose-400 rounded-full"></div>
             <h2 className="text-[10px] font-black text-rose-300 uppercase tracking-[0.2em] italic">Player</h2>
           </div>
