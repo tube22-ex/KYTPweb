@@ -30,7 +30,7 @@ const LineItem: React.FC<any> = ({
   const isActiveLine = lineIdx === currentLineIdx;
 
   return (
-    <div className={`py-1 px-4 transition-all duration-300 rounded-none ${isActiveLine ? 'bg-white shadow-[0_4px_30px_rgba(255,133,161,0.2)] relative z-10 scale-[1.01]' : ''}`}>
+    <div className={`py-1 px-4 transition-all duration-300 rounded-none border-l-4 ${isActiveLine ? 'bg-rose-50/50 border-rose-400 shadow-sm relative z-10 scale-[1.01]' : 'border-transparent'}`}>
       <div className='text-4xl font-black leading-tight flex flex-wrap gap-x-4 tracking-tighter'>
         {line.chunks.map((chunk: any, i: number) => {
           const isChunkActive = isActiveLine && i === currentChunkIdx;
@@ -312,48 +312,63 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
       const isFinished = keygraph.is_finished();
 
-      if (isFinished) {
-        const gl = roomState?.globalLineIdx ?? 0;
-        const gc = roomState?.globalChunkIdx ?? 0;
-        if (currentLine.absLineIdx === gl && currentChunkIdx === gc) {
-          const combo = (roomState?.sharedCombo || 0) + 1;
-          updateSharedCombo(roomId, combo, Math.max(roomState?.maxSharedCombo || 0, combo));
-          let nl = gl, nc = gc + 1;
-          if (nc >= currentLine.chunks.length) { nl++; nc = 0; }
-          updateGlobalProgress(roomId, nl, nc);
-        }
-        let nextLineIdxForFirebase = currentLine.absLineIdx;
-        let nextChunkIdxForFirebase = currentChunkIdx + 1;
+        if (isFinished) {
+          const gl = roomState?.globalLineIdx ?? 0;
+          const gc = roomState?.globalChunkIdx ?? 0;
+          if (currentLine.absLineIdx === gl && currentChunkIdx === gc) {
+            const combo = (roomState?.sharedCombo || 0) + 1;
+            updateSharedCombo(roomId, combo, Math.max(roomState?.maxSharedCombo || 0, combo));
+            let nl = gl, nc = gc + 1;
+            if (nc >= currentLine.chunks.length) { nl++; nc = 0; }
+            updateGlobalProgress(roomId, nl, nc);
+          }
+          let nextLineIdxForFirebase = currentLine.absLineIdx;
+          let nextChunkIdxForFirebase = currentChunkIdx + 1;
 
-        if (nextChunkIdxForFirebase < currentLine.chunks.length) {
-          setCurrentChunkIdx(nextChunkIdxForFirebase);
-        } else {
-          let nextM = -1;
-          if (currentSet?.lines) {
-            for (let i = currentLineIdx + 1; i < currentSet.lines.length; i++) {
-              if (isMine(currentSet.lines[i].absLineIdx)) { nextM = i; break; }
+          let nextChunkToBuild = null;
+
+          if (nextChunkIdxForFirebase < currentLine.chunks.length) {
+            setCurrentChunkIdx(nextChunkIdxForFirebase);
+            nextChunkToBuild = currentLine.chunks[nextChunkIdxForFirebase];
+          } else {
+            let nextM = -1;
+            if (currentSet?.lines) {
+              for (let i = currentLineIdx + 1; i < currentSet.lines.length; i++) {
+                if (isMine(currentSet.lines[i].absLineIdx)) { nextM = i; break; }
+              }
+            }
+            if (nextM !== -1) {
+              setCurrentLineIdx(nextM);
+              setCurrentChunkIdx(0);
+              nextLineIdxForFirebase = currentSet.lines[nextM].absLineIdx;
+              nextChunkIdxForFirebase = 0;
+              nextChunkToBuild = currentSet.lines[nextM].chunks[0];
+            } else {
+              setCurrentLineIdx(-1);
+              nextLineIdxForFirebase = -1;
+              nextChunkIdxForFirebase = 0;
             }
           }
-          if (nextM !== -1) {
-            setCurrentLineIdx(nextM);
-            setCurrentChunkIdx(0);
-            nextLineIdxForFirebase = currentSet.lines[nextM].absLineIdx;
-            nextChunkIdxForFirebase = 0;
+
+          if (roomId && playerId) {
+            updatePlayerProgress(roomId, playerId, nextLineIdxForFirebase, nextChunkIdxForFirebase, 0, 0, 0, nextChunkIdxForFirebase, 0, '', '');
+          }
+
+          // 次のチャンクを即時ビルドして待機時間をゼロにする
+          if (nextChunkToBuild) {
+            const key = `${nextLineIdxForFirebase}-${nextChunkIdxForFirebase}`;
+            keygraph.reset();
+            keygraph.build(nextChunkToBuild.text);
+            setIsEngineReady(true);
+            preparedRef.current = key;
           } else {
-            setCurrentLineIdx(-1);
-            nextLineIdxForFirebase = -1;
-            nextChunkIdxForFirebase = 0;
+            setIsEngineReady(false);
+          }
+        } else {
+          if (roomId && playerId && currentLine) {
+            updatePlayerProgress(roomId, playerId, currentLine.absLineIdx, currentChunkIdx, 0, 0, 0, currentChunkIdx, keygraph.seq_done()?.length || 0, keygraph.seq_done() || '', chunk.text);
           }
         }
-        if (roomId && playerId) {
-          updatePlayerProgress(roomId, playerId, nextLineIdxForFirebase, nextChunkIdxForFirebase, 0, 0, 0, nextChunkIdxForFirebase, 0, '', '');
-        }
-        setIsEngineReady(false);
-      } else {
-        if (roomId && playerId && currentLine) {
-          updatePlayerProgress(roomId, playerId, currentLine.absLineIdx, currentChunkIdx, 0, 0, 0, currentChunkIdx, keygraph.seq_done()?.length || 0, keygraph.seq_done() || '', chunk.text);
-        }
-      }
     } else { try { miss_sound.play(); } catch (_) { } }
   };
 
@@ -396,7 +411,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   return (
     <div className='flex flex-col items-center w-full max-w-none mx-auto pb-12 px-0'>
       {/* プレイ画面全体をくくる枠 (角を丸くせず、paddingを0に、上辺のボーダーのみ削る) */}
-      <div className="w-full border-x-4 border-b-4 border-white rounded-none bg-white/5 backdrop-blur-sm p-0 flex flex-col gap-0 shadow-2xl overflow-hidden">
+      <div className="w-full border-4 border-white rounded-none bg-white/5 backdrop-blur-sm p-0 flex flex-col gap-0 shadow-2xl overflow-hidden">
 
         {/* 1. プレイヤーレーン (背景を透過させて枠に密着) */}
         <div className="w-full bg-white/10 border-b-2 border-white/20">
