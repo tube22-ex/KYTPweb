@@ -26,6 +26,9 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
     <div className="w-full relative">
       {/* 舞台エリア (絶対的な比率指定を廃止し、中身に合わせて高さが伸びるように変更) */}
       <div className="relative w-full min-h-[220px] stage-floor-cute group bubble-bg rounded-none border-x-4 border-white shadow-inner pt-16 pb-4 overflow-visible scrollbar-hide">
+        {/* ステージのキラキラ・環境エフェクト */}
+        <div className="stage-glow" />
+
         {/* 装飾的な雲やキラキラなどを背景に追加可能 */}
         <div className="absolute top-4 left-10 w-24 h-8 bg-white/40 rounded-full blur-xl animate-pulse" />
         <div className="absolute bottom-10 right-20 w-32 h-12 bg-white/30 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '1s' }} />

@@ -27,6 +27,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+main {
+  border: solid rgb(206, 252, 255);
+}
+
 h1,
 h2,
 h3,
@@ -109,19 +113,70 @@ h3,
 }
 
 .stage-floor-cute {
-  background: linear-gradient(to bottom, #fff5f7 0%, #fff 100%);
+  background: linear-gradient(to bottom, #fff5f7 0%, #fff0f5 60%, #ffe4e9 60%, #ffd1dc 100%);
   position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 10px 30px rgba(0, 0, 0, 0.02);
 }
 
+/* ステージの床（パースがついている風） */
+.stage-floor-cute::before {
+  content: '';
+  position: absolute;
+  top: 60%;
+  left: -50%;
+  width: 200%;
+  height: 40%;
+  background: repeating-linear-gradient(90deg,
+      transparent,
+      transparent 49px,
+      rgba(255, 255, 255, 0.3) 50px);
+  transform: perspective(300px) rotateX(45deg);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* スポットライト効果 */
 .stage-floor-cute::after {
   content: '';
   position: absolute;
-  bottom: 0;
+  top: 0;
   left: 0;
   width: 100%;
-  height: 20%;
-  background: radial-gradient(ellipse at center, rgba(255, 133, 161, 0.1) 0%, transparent 70%);
+  height: 100%;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.4) 0%, transparent 40%),
+    radial-gradient(circle at 70% 20%, rgba(255, 255, 255, 0.4) 0%, transparent 40%),
+    radial-gradient(ellipse at bottom, rgba(255, 255, 255, 0.5) 0%, transparent 70%);
   pointer-events: none;
+  z-index: 3;
+  mix-blend-mode: soft-light;
+}
+
+/* キラキラ・浮遊感のアクセント */
+.stage-glow {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 2;
+  background-image: radial-gradient(circle, #fff 10%, transparent 11%);
+  background-size: 100px 100px;
+  background-position: 0 0;
+  opacity: 0.1;
+  animation: float-glow 20s linear infinite;
+}
+
+@keyframes float-glow {
+  from {
+    background-position: 0 0;
+  }
+
+  to {
+    background-position: 100px 200px;
+  }
 }
 
 /* スクロールバーを非表示にするためのユーティリティ */

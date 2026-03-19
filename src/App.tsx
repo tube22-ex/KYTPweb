@@ -52,6 +52,34 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // 音量管理 (localStorage保存、Keyboard操作)
+  const [volume, setVolume] = useState(() => {
+    const saved = localStorage.getItem('kytp_volume');
+    return saved ? Number(saved) : 50;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('kytp_volume', volume.toString());
+    // sound.jsでグローバル変数として参照されているため、windowオブジェクトにセット
+    (window as any).typeVolume = volume / 100;
+    (window as any).clearVolume = volume / 100;
+    (window as any).missVolume = volume / 100;
+  }, [volume]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setVolume(prev => Math.min(100, prev + 5));
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setVolume(prev => Math.max(0, prev - 5));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // 日本語のセグメンテーション（ふりがな付与）
   const [history, setHistory] = useState<PlayedHistoryItem[]>(() => {
     const saved = localStorage.getItem('kytp_history');
@@ -255,6 +283,22 @@ function App() {
                       <option value="'Orbitron', sans-serif">Digital (Futuristic)</option>
                     </select>
                   </div>
+
+                  <div className="flex flex-col gap-1.5 mt-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[9px] font-black text-rose-300 uppercase italic tracking-tighter">Volume</label>
+                      <span className="text-[10px] font-black text-zinc-400 tabular-nums">{volume}%</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="100" 
+                      value={volume}
+                      onChange={(e) => setVolume(Number(e.target.value))}
+                      className="w-full h-1.5 bg-rose-100 rounded-lg appearance-none cursor-pointer accent-rose-400"
+                    />
+                    <p className="text-[7px] text-zinc-300 font-bold uppercase">Tip: Use Arrow Up/Down keys</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -362,11 +406,11 @@ function App() {
                 {!mapData ? (
                   /* マップ選択待ち状態 */
                   <div className="w-full h-full flex flex-col min-h-0">
-                    <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 mb-4">
-                      <MapLoader onLoad={handleMapLoad} />
-                    </div>
-                    <div className="flex-shrink-0 py-4 bg-white/60 backdrop-blur-md border-t border-rose-100 flex justify-center shadow-[0_-10px_20px_rgba(255,133,161,0.05)]">
+                    <div className="flex-shrink-0 py-4 bg-white/60 backdrop-blur-md border-b border-rose-100 flex justify-center shadow-[0_10px_20px_rgba(255,133,161,0.05)] mb-4">
                       <PlayerLane roomState={roomState} playerId={playerId} />
+                    </div>
+                    <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                      <MapLoader onLoad={handleMapLoad} />
                     </div>
                   </div>
                 ) : (
