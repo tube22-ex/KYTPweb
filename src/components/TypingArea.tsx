@@ -49,7 +49,7 @@ const LineItem: React.FC<any> = ({
           const displayText = chunk.text.toUpperCase().replace(/ /g, '　');
 
           return (
-            <span key={i} className="relative transition-all duration-300" style={{ color: playerColor }}>
+            <span key={i} className="relative" style={{ color: playerColor }}>
               {isChunkActive || isOpponentActiveChunk ? (
                 <>
                   <span className="opacity-20 inline-block">{displayText.slice(0, matchedTyping.length)}</span>
