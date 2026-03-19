@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react'
 import { ParseResult } from '../services/api';
 import keygraph from '../utils/keygraph';
 import { sound, miss_sound } from '../utils/sound';
-import { updatePlayerProgress, RoomState, setRoomStartTime, getServerTimeOffset, PLAYER_COLORS, incrementSharedScore, updateSharedCombo, updateGlobalProgress, updateRoomPlayback, determineHostId } from '../services/sync';
+import { updatePlayerProgress, RoomState, setRoomStartTime, getServerTimeOffset, incrementSharedScore, updateSharedCombo, updateGlobalProgress, updateRoomPlayback, determineHostId } from '../services/sync';
 import { PlayerLane } from './PlayerLane';
 
 interface Props {
@@ -519,7 +519,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 {currentSet.lines.map((line: any, lIdx: number) => {
                   const pid = getAssignedPlayerId(line.absLineIdx, playerIds);
                   const u = roomState?.players?.[pid];
-                  const pColor = u?.color || PLAYER_COLORS[playerIds.indexOf(pid) % PLAYER_COLORS.length];
+                  // u?.color優先。未ロード中はグレーを返し、一瞬別の色が見えるフラッシング防止
+                  const pColor = u?.color ?? '#aaaaaa';
                   const iD = u && (u.currentLineIdx === -1 || u.currentLineIdx > line.absLineIdx);
                   const iS = !(pid === playerId) && u && u.currentLineIdx === line.absLineIdx;
                   return (
@@ -534,33 +535,32 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             <div className="w-full bg-rose-400 flex flex-col relative overflow-hidden border-b-4 border-white/10">
 
               {/* ライン進捗バー (タイマー) */}
-              {isStarted && !isGameOver && (
-                <div className="w-full h-4 bg-rose-900/20">
-                  <div
-                    className="h-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)] transition-all duration-100"
-                    style={{
-                      width: `${(() => {
-                        const line = currentSet.lines[0];
-                        const nextSet = mapData.displaySets[currentBlockIdx + 1];
-                        const now = currentTime * 1000;
-                        const setEnd = nextSet ? nextSet.timeMs : (videoDuration * 1000);
-
-                        let start, end;
-                        if (currentBlockIdx === 0 && now < line.timeMs) {
-                          start = 0;
-                          end = line.timeMs;
-                        } else {
-                          start = line.timeMs;
-                          end = setEnd;
-                        }
-
-                        const progress = (now - start) / (Math.max(1, end - start));
-                        return Math.max(0, Math.min(100, progress * 100));
-                      })()}%`
-                    }}
-                  />
-                </div>
-              )}
+              {isStarted && !isGameOver && (() => {
+                const myColor = roomState?.players?.[playerId]?.color ?? '#ffffff';
+                const line = currentSet.lines[0];
+                const nextSet = mapData.displaySets[currentBlockIdx + 1];
+                const now = currentTime * 1000;
+                const setEnd = nextSet ? nextSet.timeMs : (videoDuration * 1000);
+                let start, end;
+                if (currentBlockIdx === 0 && now < line.timeMs) {
+                  start = 0; end = line.timeMs;
+                } else {
+                  start = line.timeMs; end = setEnd;
+                }
+                const progress = Math.max(0, Math.min(100, (now - start) / Math.max(1, end - start) * 100));
+                return (
+                  <div className="w-full h-4 bg-black/20">
+                    <div
+                      className="h-full transition-all duration-100"
+                      style={{
+                        backgroundColor: myColor,
+                        boxShadow: `0 0 10px ${myColor}88`,
+                        width: `${progress}%`
+                      }}
+                    />
+                  </div>
+                );
+              })()}
 
               <div className="h-16 flex items-center justify-between px-10">
                 <div className="flex flex-col items-start leading-none mt-1">
