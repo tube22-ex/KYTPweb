@@ -17,7 +17,7 @@ function App() {
 
   // ルーム管理ステート
   const [roomId, setRoomId] = useState('');
-  const [playerName, setPlayerName] = useState('');
+  const [playerName, setPlayerName] = useState(() => 'User_' + Math.random().toString(36).substring(2, 6));
   const [playerId] = useState(() => {
     const saved = localStorage.getItem('kytp_player_id');
     if (saved) return saved;
@@ -102,16 +102,22 @@ function App() {
     localStorage.setItem('kytp_history', JSON.stringify(newHistory));
   };
 
-  const handleJoin = async () => {
-    if (!roomId.trim() || !playerName.trim()) return;
+  const handleJoin = async (targetRoomId: string = roomId) => {
+    const idToJoin = targetRoomId.trim() || roomId.trim();
+    if (!idToJoin || !playerName.trim()) return;
     try {
-      await deleteRoomIfEmpty(roomId);
-      const currentState = await getRoomState(roomId);
+      await deleteRoomIfEmpty(idToJoin);
+      const currentState = await getRoomState(idToJoin);
+      if (currentState?.status === 'playing') {
+        alert('プレイ中の部屋には入室できません。');
+        return;
+      }
       const existingCount = Object.keys(currentState?.players ?? {}).length;
       const color = PLAYER_COLORS[existingCount % PLAYER_COLORS.length];
-      await joinRoom(roomId, playerId, playerName, color);
+      await joinRoom(idToJoin, playerId, playerName, color);
+      setRoomId(idToJoin);
       setInRoom(true);
-      subscribeToRoom(roomId, (state) => {
+      subscribeToRoom(idToJoin, (state) => {
         setRoomState(state);
       });
     } catch (err) {
@@ -221,17 +227,17 @@ function App() {
 
   return (
     <div
-      className="flex flex-col items-center h-screen bg-gradient-to-br from-[#fff5f7] via-white to-[#f5f3ff] text-zinc-800 p-2 lg:p-4 overflow-hidden selection:bg-rose-200"
+      className="flex flex-col items-center h-screen bg-gradient-to-br from-[#fff5f7] via-white to-[#f5f3ff] text-zinc-800 p-1 lg:p-2 overflow-hidden selection:bg-rose-200"
       style={{ fontFamily: selectedFont }}
     >
 
-      <header className="flex flex-col items-center mb-6 relative z-10 w-full text-center flex-shrink-0">
-        <h1 className="text-4xl font-black mb-1 font-premium bg-clip-text text-transparent bg-gradient-to-br from-rose-400 via-rose-500 to-purple-500 tracking-tighter drop-shadow-sm">
+      <header className="flex flex-col items-center mb-2 relative z-10 w-full text-center flex-shrink-0">
+        <h1 className="text-3xl font-black mb-0 font-premium bg-clip-text text-transparent bg-gradient-to-br from-rose-400 via-rose-500 to-purple-500 tracking-tighter drop-shadow-sm leading-none">
           通うタイピング
         </h1>
-        <div className="flex items-center justify-center gap-1.5">
+        <div className="flex items-center justify-center gap-1.5 mt-1">
           <div className="h-[1px] w-6 bg-rose-200"></div>
-          <p className="text-[8px] font-black uppercase tracking-[0.5em] text-rose-400 font-premium">Browser Edition</p>
+          <p className="text-[7px] font-black uppercase tracking-[0.5em] text-rose-400 font-premium">Browser Edition</p>
           <div className="h-[1px] w-6 bg-rose-200"></div>
         </div>
       </header>
@@ -346,7 +352,7 @@ function App() {
                     className="px-4 py-3 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black text-zinc-700 shadow-inner text-sm"
                   />
                   <button
-                    onClick={handleJoin}
+                    onClick={() => handleJoin()}
                     className="w-full py-4 bg-rose-400 hover:bg-rose-500 text-white font-black shadow-lg transition-all active:scale-95 text-sm uppercase font-premium"
                   >
                     入室
@@ -373,8 +379,13 @@ function App() {
                               key={rid}
                               onClick={() => {
                                 setRoomId(rid);
-                                // 名前が入力済みなら即座にジョインを試みることも可能だが、
-                                // 確認のためにIDを入れるだけに留める
+                              }}
+                              onDoubleClick={() => {
+                                if (isPlaying) {
+                                  alert('プレイ中の部屋には入室できません。');
+                                  return;
+                                }
+                                handleJoin(rid);
                               }}
                               className="group flex items-center justify-between p-3 bg-white border border-zinc-100 hover:border-rose-200 hover:bg-rose-50/30 transition-all text-left"
                             >
@@ -406,7 +417,7 @@ function App() {
                 {!mapData ? (
                   /* マップ選択待ち状態 */
                   <div className="w-full h-full flex flex-col min-h-0">
-                    <div className="flex-shrink-0 py-4 bg-white/60 backdrop-blur-md border-b border-rose-100 flex justify-center shadow-[0_10px_20px_rgba(255,133,161,0.05)] mb-4">
+                    <div className="flex-shrink-0 bg-white/60 backdrop-blur-md border-b border-rose-100 flex justify-center shadow-[0_10px_20px_rgba(255,133,161,0.05)]" style={{ padding: 0, marginBottom: '4px' }}>
                       <PlayerLane roomState={roomState} playerId={playerId} />
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
@@ -445,8 +456,8 @@ function App() {
           <aside className="relative flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden">
             <div className="flex items-center justify-between mb-3 ml-1 flex-shrink-0">
               <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-3 bg-purple-400 rounded-full"></div>
-                <h2 className="text-[10px] font-black text-purple-300 uppercase tracking-[0.4em] italic">Guide</h2>
+                <div className="w-1.5 h-3 rounded-full" style={{ backgroundColor: '#e91e8c' }}></div>
+                <h2 className="text-[10px] font-black uppercase tracking-[0.4em] italic" style={{ color: '#e91e8c', opacity: 1 }}>Guide</h2>
               </div>
               <button
                 onClick={() => setShowLyrics(false)}
@@ -458,7 +469,8 @@ function App() {
             {/* Guideのコンテンツエリアを flex-1 + overflow-y-auto にして高さを揃える */}
             <div
               ref={lyricsScrollRef}
-              className="flex-1 bg-white border border-zinc-100 shadow-sm overflow-y-auto custom-scrollbar p-3"
+              className="flex-1 border border-zinc-100 shadow-sm overflow-y-auto custom-scrollbar p-3"
+              style={{ backgroundColor: '#fff5f8' }}
             >
               {mapData?.displaySets.map((set, setIdx) => {
                 const isActive = setIdx === activeBlockIdx;
@@ -466,16 +478,22 @@ function App() {
                   <div
                     key={setIdx}
                     data-set-idx={setIdx}
-                    className={`break-inside-avoid mb-4 border-l-4 p-4 transition-all rounded-r-md scroll-mt-4 ${isActive ? 'border-rose-400 bg-rose-100 shadow-xl ring-1 ring-rose-200 scale-[1.02] z-10' : 'border-zinc-50 bg-zinc-50/5'}`}
+                    className={`break-inside-avoid mb-4 border-l-4 p-4 transition-all rounded-r-md scroll-mt-4 ${isActive ? 'border-rose-400 bg-rose-100 shadow-xl ring-1 ring-rose-200 scale-[1.02] z-10' : 'border-zinc-50 bg-white/50'}`}
                   >
-                    <div className={`text-[10px] font-black uppercase tracking-widest italic mb-2 transition-colors ${isActive ? 'text-rose-500 opacity-100' : 'text-rose-300 opacity-60'}`}>Block {setIdx + 1}</div>
+                    <div className="uppercase tracking-widest italic mb-2 transition-colors" style={{ fontSize: 'clamp(12px, 1.2vw, 14px)', color: '#e91e8c', fontWeight: 700, opacity: 1 }}>Block {setIdx + 1}</div>
                     <div className="flex flex-col gap-2">
                       {set.lines.map((line, lIdx) => {
                         const hiragana = line.chunks.map((c: any) => c.text).join('');
                         return (
                           <div
                             key={lIdx}
-                            className={`font-black leading-tight transition-all ${isActive ? 'text-zinc-900 text-[20px] drop-shadow-sm' : 'text-zinc-400 text-[13px]'}`}
+                            className="leading-tight transition-all"
+                            style={{
+                              fontWeight: 700,
+                              color: isActive ? '#1a1a1a' : '#666666',
+                              fontSize: isActive ? 'clamp(13px, 1.4vw, 16px)' : 'clamp(12px, 1.2vw, 14px)',
+                              opacity: 1
+                            }}
                           >
                             {hiragana}
                           </div>

@@ -22,10 +22,10 @@ export interface PlayerState {
 }
 
 export const PLAYER_COLORS = [
-  '#FF416C', // Premium Red
-  '#2B86C5', // Premium Blue
-  '#3DFC64', // Premium Green
-  '#FBD72B'  // Premium Yellow
+  '#e74c3c', '#3498db', '#2ecc71', '#f39c12',
+  '#9b59b6', '#1abc9c', '#e67e22', '#e91e63',
+  '#00bcd4', '#8bc34a', '#ff5722', '#607d8b',
+  '#795548', '#673ab7', '#009688', '#cddc39'
 ];
 
 export interface RoomState {

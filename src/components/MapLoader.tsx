@@ -70,29 +70,30 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
   };
 
   return (
-    <div className="bg-white border-4 border-white shadow-[0_10px_30px_rgba(255,133,161,0.05)] p-8 rounded-none w-full h-full flex flex-col gap-6 relative overflow-hidden bubble-bg">
+    <div className="bg-white border-4 border-white shadow-[0_10px_30px_rgba(255,133,161,0.05)] rounded-none w-full h-full flex flex-col relative overflow-hidden bubble-bg input-section" style={{ padding: '4px 0', margin: 0, gap: '4px' }}>
 
       <div className="flex flex-col gap-1">
-        <h3 className="text-xl font-black font-premium text-zinc-700 italic uppercase tracking-tighter">譜面ID・URL</h3>
-        <p className="text-[10px] text-rose-300 font-black uppercase tracking-widest italic">譜面IDを入力してフォーカスを外すとプレビューが表示されます</p>
+        <p className="text-[10px] text-rose-300 font-black uppercase tracking-widest italic" style={{ margin: '0 0 2px 0', lineHeight: 1.2 }}>譜面IDを入力してフォーカスを外すとプレビューが表示されます</p>
       </div>
 
-      <div className="flex flex-col gap-4">
-        <div className="flex gap-3">
+      <div className="flex flex-col gap-1">
+        <div className="flex input-row" style={{ margin: '2px 0', gap: '4px' }}>
           <div className="flex-1 relative">
             <input
               type="text"
-              placeholder="ステージID (例: 1)"
+              placeholder="YTYPINGの譜面ID または 譜面URL"
               value={mapId}
               onChange={(e) => setMapId(e.target.value)}
               onBlur={handleBlur}
-              className="w-full px-5 py-4 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black placeholder:text-zinc-300 text-zinc-700 shadow-inner"
+              className="w-full rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black placeholder:text-zinc-300 text-zinc-700 shadow-inner"
+              style={{ height: '36px', padding: '0 8px' }}
             />
           </div>
           <button
             onClick={handleLoad}
             disabled={loading}
-            className="px-8 py-4 bg-rose-400 hover:bg-rose-500 text-white font-black rounded-none shadow-lg transition-all active:scale-[0.95] disabled:opacity-50 disabled:scale-100 flex items-center gap-2 group/btn font-premium"
+            className="px-4 bg-rose-400 hover:bg-rose-500 text-white font-black rounded-none shadow-lg transition-all active:scale-[0.95] disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2 group/btn font-premium"
+            style={{ height: '36px' }}
           >
             {loading ? (
               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>

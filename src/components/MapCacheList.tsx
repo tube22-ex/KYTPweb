@@ -66,18 +66,18 @@ export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect }) => {
   }
 
   return (
-    <div className="flex flex-col gap-6 mt-12 pt-8 border-t-4 border-rose-50 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-      <div className="flex items-center justify-between mb-2">
+    <div className="flex flex-col border-t-4 border-rose-50 animate-in fade-in slide-in-from-bottom-8 duration-1000 cached-section" style={{ marginTop: '4px', paddingTop: 0, gap: '4px' }}>
+      <div className="hidden items-center justify-between mb-2">
         <div className="flex items-center gap-3">
           <div className="w-3 h-6 bg-rose-500 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.4)]"></div>
-          <h4 className="text-2xl font-black text-zinc-800 uppercase tracking-tighter italic">
+          <h4 className="text-2xl font-black text-zinc-800 uppercase tracking-tighter italic" style={{ margin: '0 0 4px 0', padding: 0, lineHeight: 1.2 }}>
             キャッシュされた譜面<span className="text-rose-400">({cachedMaps.length})</span>
           </h4>
         </div>
         <div className="text-xs font-black text-rose-300 uppercase italic tracking-widest">Select a stage to begin</div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-6 max-h-[800px] overflow-y-auto pr-4 custom-scrollbar p-2">
+      <div className="grid grid-cols-5 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar p-0 chart-grid" style={{ gap: '8px', marginTop: '4px', paddingTop: 0, gridTemplateColumns: 'repeat(5, 1fr)' }}>
         {cachedMaps.map((map) => {
           const thumbnail = map.videoId
             ? `https://img.youtube.com/vi/${map.videoId}/mqdefault.jpg`
@@ -87,7 +87,8 @@ export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect }) => {
             <button
               key={map.id}
               onClick={() => onSelect(map as ParseResult, map.id)}
-              className="group flex flex-col bg-white border-4 border-zinc-50 hover:border-rose-300 hover:shadow-2xl hover:shadow-rose-200 transition-all text-left relative overflow-hidden active:scale-[0.98]"
+              className="group flex flex-col bg-white border-4 border-zinc-50 hover:border-rose-300 hover:shadow-2xl hover:shadow-rose-200 transition-all text-left relative overflow-hidden active:scale-[0.98] chart-card"
+              style={{ margin: 0 }}
             >
               {/* Large Thumbnail Area */}
               <div className="w-full aspect-video bg-zinc-100 overflow-hidden relative border-b-2 border-zinc-50">
@@ -108,8 +109,8 @@ export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect }) => {
                 </div>
               </div>
 
-              <div className="flex flex-col p-6 min-w-0">
-                <div className="text-xl font-black text-zinc-800 group-hover:text-rose-600 transition-colors line-clamp-2 uppercase italic tracking-tighter leading-[1.1] mb-3">
+              <div className="flex flex-col p-2 min-w-0">
+                <div className="text-[14px] font-black text-zinc-800 group-hover:text-rose-600 transition-colors line-clamp-2 uppercase italic tracking-tighter leading-[1.1] mb-1">
                   {map.title || 'Untitled Stage'}
                 </div>
                 <div className="text-sm font-bold text-zinc-400 line-clamp-1 truncate border-l-4 border-rose-200 pl-3 py-1 bg-rose-50/30">

@@ -25,7 +25,7 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
   return (
     <div className="w-full relative">
       {/* 舞台エリア (ダークステージ) */}
-      <div className="relative w-full min-h-[220px] stage-floor-dark group rounded-none border-x-4 border-zinc-900 shadow-inner pt-16 pb-4 overflow-visible scrollbar-hide">
+      <div className="relative w-full stage-floor-dark group rounded-none border-x-4 border-zinc-900 shadow-inner overflow-visible scrollbar-hide stage-container" style={{ height: '200px', minHeight: '120px', marginBottom: 0, paddingBottom: 0, paddingTop: '16px' }}>
 
         {/* 上部の骨組みとスピーカー装飾 */}
         <div className="stage-truss" />
@@ -37,7 +37,7 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
           {players.map(p => (
             <div key={p.id} className="flex-1 min-w-0 flex flex-col items-center transition-all duration-500 hover:scale-110 relative">
               {/* キャラクター (画面の高さに合わせて動的にリサイズ) */}
-              <div className="relative h-[22vh] min-h-[160px] max-h-[350px] w-full flex flex-col items-center justify-end group-hover:z-30">
+              <div className="relative w-full flex flex-col items-center justify-end group-hover:z-30" style={{ height: '140px', minHeight: '100px' }}>
                 {/* ホスト/YOUタグ (さらに強調) */}
                 <div className="absolute -top-4 right-1/2 translate-x-12 flex flex-col gap-1 items-end z-30">
                   {p.id === hostId && (
