@@ -35,7 +35,7 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
         {/* プレイヤー整列 (relativeに変更し、親の高さに影響を与えるようにした) */}
         <div className="relative flex items-end justify-center px-4 gap-8 z-20 min-w-0">
           {players.map(p => (
-            <div key={p.id} className="flex-1 min-w-0 flex flex-col items-center transition-all duration-500 hover:scale-110 relative">
+            <div key={p.id} className="flex-none w-40 flex flex-col items-center transition-all duration-500 hover:scale-110 relative">
               {/* キャラクター (さらに低く調整) */}
               <div className="relative w-full flex flex-col items-center justify-end group-hover:z-30" style={{ height: '120px' }}>
                 {/* ホスト/YOUタグ (さらに強調) */}

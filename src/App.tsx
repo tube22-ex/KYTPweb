@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { MapLoader } from './components/MapLoader';
 import { TypingArea } from './components/TypingArea';
 import { PlayerLane } from './components/PlayerLane';
@@ -13,7 +13,7 @@ interface PlayedHistoryItem {
 }
 
 const BASE_WIDTH = 1280;
-const BASE_HEIGHT = 720;
+const BASE_HEIGHT = 850;
 
 export default function App() {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -35,7 +35,6 @@ export default function App() {
 
   // 表示トグル
   const [showHistory, setShowHistory] = useState(false);
-  const [showLyrics, setShowLyrics] = useState(true);
 
   // 現在の再生/タイピングブロック (TypingArea から同期)
   const [activeBlockIdx, setActiveBlockIdx] = useState(0);
@@ -102,8 +101,6 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  const lyricsScrollRef = useRef<HTMLDivElement>(null);
-
   const saveToHistory = (data: ParseResult, mid: string) => {
     if (!data.videoId) return;
     const thumbnail = `https://img.youtube.com/vi/${data.videoId}/mqdefault.jpg`;
@@ -156,15 +153,6 @@ export default function App() {
       setMapData(null);
     }
   }, [roomState?.mapId, mapData]);
-
-  useEffect(() => {
-    if (mapData && lyricsScrollRef.current) {
-      const activeBlock = lyricsScrollRef.current.querySelector(`[data-set-idx="${activeBlockIdx}"]`);
-      if (activeBlock) {
-        activeBlock.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }
-  }, [activeBlockIdx, mapData]);
 
   const handleMapLoad = async (data: ParseResult, inputMapId: string) => {
     setMapData(data);
@@ -235,7 +223,7 @@ export default function App() {
   return (
     <div
       ref={rootRef}
-      className="flex flex-col items-center bg-gradient-to-br from-[#fff5f7] via-white to-[#f5f3ff] text-zinc-800 selection:bg-rose-200"
+      className="flex flex-col items-stretch bg-gradient-to-br from-[#fff5f7] via-white to-[#f5f3ff] text-zinc-800 selection:bg-rose-200"
       style={{ 
         fontFamily: selectedFont,
         width: `${BASE_WIDTH}px`,
@@ -257,13 +245,13 @@ export default function App() {
         </div>
       </header>
 
-      <div className={`flex flex-row items-start relative z-10 flex-1 w-full layout-root ${!mapData ? 'lobby-screen' : ''}`}
-        style={{ margin: 0, padding: 0 }}
+      <div className={`flex flex-row items-start relative z-10 flex-1 layout-root ${!mapData ? 'lobby-screen' : ''}`}
+        style={{ margin: 0, padding: 0, width: '100%' }}
       >
         {/* 左カラム: プレイ履歴 (130px) */}
-        <div className="left-column relative h-full flex flex-row items-start" style={{ flexShrink: 0, width: showHistory ? '130px' : '30px' }}>
+        <div className={`left-column relative h-full flex flex-row items-start ${showHistory ? 'has-history' : ''}`} style={{ flexShrink: 0 }}>
           <aside className={`relative flex flex-col h-full transition-all duration-200 ease-out overflow-hidden ${showHistory ? 'open' : ''}`}
-            style={{ width: showHistory ? '130px' : '0px', minWidth: showHistory ? '130px' : '0px', flexShrink: 0 }}>
+            style={{ flexShrink: 0 }}>
             <div className="w-[130px] flex flex-col h-full pr-1">
               <div className="flex items-center justify-between mb-3 ml-1 flex-shrink-0">
                 <div className="flex items-center gap-1.5 ">
@@ -296,7 +284,7 @@ export default function App() {
                       </select>
                     </div>
                     <div className="flex flex-col gap-1.5 mt-2">
-                      <div className="flex justify-between items-center">
+                       <div className="flex justify-between items-center">
                         <label className="text-[9px] font-black text-rose-300 uppercase italic tracking-tighter">Volume</label>
                         <span className="text-[10px] font-black text-zinc-400 tabular-nums">{volume}%</span>
                       </div>
@@ -316,7 +304,7 @@ export default function App() {
           </aside>
           <button
             onClick={() => setShowHistory(!showHistory)}
-            className="flex h-12 w-6 bg-white border border-rose-100 items-center justify-center text-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all z-20 shadow-sm mt-4 rounded-r-md"
+            className="history-toggle flex h-12 w-6 bg-white border border-rose-100 items-center justify-center text-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all z-20 shadow-sm mt-4 rounded-r-md"
           >
             <span className="text-[10px] tabular-nums">{showHistory ? '◀' : '▶'}</span>
           </button>
@@ -455,62 +443,51 @@ export default function App() {
         </main>
 
         {/* 右カラム: 歌詞リスト (290px) */}
-        <aside className="right-column guide-column relative flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden"
-          style={{ width: '290px', minWidth: '290px', maxWidth: '290px' }}>
-          {showLyrics && (
-            <div className="flex flex-col h-full">
-              <div className="flex items-center justify-between mb-3 ml-1 flex-shrink-0">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-3 rounded-full" style={{ backgroundColor: '#e91e8c' }}></div>
-                  <h2 className="text-[10px] font-black uppercase tracking-[0.4em] italic" style={{ color: '#e91e8c', opacity: 1 }}>Guide</h2>
-                </div>
-                <button
-                  onClick={() => setShowLyrics(false)}
-                  className="w-5 h-5 flex items-center justify-center text-purple-200 hover:text-purple-400 hover:bg-purple-50 transition-all rounded-full"
-                >
-                  <span className="text-[10px]">▶</span>
-                </button>
+        {!(!mapData && roomState) && (
+          <aside className="right-column guide-column"
+            style={{
+              width: '290px',
+              minWidth: '290px',
+              maxWidth: '290px',
+              flexShrink: 0,
+              marginRight: 0,
+              paddingRight: 0,
+              alignSelf: 'stretch',
+              overflow: 'hidden',
+            }}>
+            {/* 1. 全演奏ブロックのガイドリスト */}
+            <div className="guide-blocks custom-scrollbar">
+              <div className="flex items-center gap-1.5 mb-3 ml-1 flex-shrink-0">
+                <div className="w-1.5 h-3 bg-purple-400 rounded-full"></div>
+                <h2 className="text-[10px] font-black text-purple-300 uppercase tracking-[0.2em] italic">Guide</h2>
               </div>
-              <div
-                ref={lyricsScrollRef}
-                className="flex-1 border border-zinc-100 shadow-sm overflow-y-auto custom-scrollbar p-3"
-                style={{ backgroundColor: '#fff5f8' }}
-              >
-                {mapData?.displaySets.map((set, setIdx) => {
-                  const isActive = setIdx === activeBlockIdx;
-                  return (
-                    <div
-                      key={setIdx}
-                      data-set-idx={setIdx}
-                      className={`break-inside-avoid mb-4 border-l-4 p-4 transition-all rounded-r-md scroll-mt-4 ${isActive ? 'border-rose-400 bg-rose-100 shadow-xl ring-1 ring-rose-200 scale-[1.02] z-10' : 'border-zinc-50 bg-white/50'}`}
-                    >
-                      <div className="uppercase tracking-widest italic mb-2 transition-colors" style={{ fontSize: '14px', color: '#e91e8c', fontWeight: 700, opacity: 1 }}>Block {setIdx + 1}</div>
-                      <div className="flex flex-col gap-2">
-                        {set.lines.map((line, lIdx) => {
-                          const hiragana = line.chunks.map((c: any) => c.text).join('');
-                          return (
-                            <div key={lIdx} className="leading-tight transition-all break-all font-bold opacity-100"
-                              style={{ color: isActive ? '#1a1a1a' : '#666666', fontSize: isActive ? '16px' : '14px', wordBreak: 'break-all' }}>
-                              {hiragana}
-                            </div>
-                          );
-                        })}
-                      </div>
+              <div className="flex flex-col gap-2">
+                {mapData?.displaySets.map((set, idx) => (
+                  <button
+                    key={idx}
+                    className={`group relative p-3 border-l-4 transition-all text-left ${activeBlockIdx === idx
+                      ? 'bg-rose-50 border-rose-400 shadow-md translate-x-1'
+                      : 'bg-white border-zinc-100 hover:bg-zinc-50 hover:border-zinc-300'
+                      }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`text-[10px] font-black italic ${activeBlockIdx === idx ? 'text-rose-400' : 'text-zinc-300'}`}>BLOCK {String(idx + 1).padStart(2, '0')}</span>
+                      <span className="text-[9px] font-bold text-zinc-300 tabular-nums">
+                        {Math.floor(set.timeMs / 1000 / 60)}:{String(Math.floor((set.timeMs / 1000) % 60)).padStart(2, '0')}
+                      </span>
                     </div>
-                  );
-                })}
+                    <div className={`text-[11px] font-bold leading-tight ${activeBlockIdx === idx ? 'text-rose-900' : 'text-zinc-500'}`}>
+                      {set.lines[0]?.chunks.map((c: any) => c.text).join('　') || '...'}
+                    </div>
+                    {activeBlockIdx === idx && (
+                      <div className="absolute top-0 right-0 h-full w-1 bg-rose-400"></div>
+                    )}
+                  </button>
+                ))}
               </div>
             </div>
-          )}
-          {!showLyrics && (
-            <button
-              onClick={() => setShowLyrics(true)}
-              className="flex h-12 w-6 bg-white border border-rose-100 items-center justify-center text-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all z-20 shadow-sm mt-4 rounded-l-md self-end"
-            >
-              <span className="text-[10px] tabular-nums">◀</span>
-            </button>
-          )}
-        </aside>
+          </aside>
+        )}
       </div>
 
       <footer className="py-2 opacity-10 text-[8px] font-black uppercase tracking-[0.5em] pointer-events-none relative z-10 w-full text-center flex-shrink-0">
