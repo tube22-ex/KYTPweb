@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { ParseResult } from '../services/api';
 import keygraph from '../utils/keygraph';
 import { sound, miss_sound } from '../utils/sound';
@@ -288,17 +288,49 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     return () => clearInterval(int);
   }, [isStarted, isEngineReady, isGameOver, currentSet, currentLine, currentLineIdx, currentChunkIdx, isMe]);
 
-  const handleKeydown = (e: KeyboardEvent) => {
-    if (e.code === 'Space' && canSkip) {
+  // ===【パフォーマンス改善】===
+  // handleKeydownが毎回生成・登録しなおされないようにするため、
+  // すべての参照をrefで保持して、useEffectの依存配列を空にする
+  const isStartedRef = useRef(isStarted);
+  const isEngineReadyRef = useRef(isEngineReady);
+  const isMeRef = useRef(isMe);
+  const currentLineRef = useRef(currentLine);
+  const currentChunkIdxRef = useRef(currentChunkIdx);
+  const roomStateRef = useRef(roomState);
+  const currentLineIdxRef = useRef(currentLineIdx);
+  const canSkipRef = useRef(canSkip);
+  const nextSetRef = useRef(nextSet);
+  const isMineRef = useRef(isMine);
+  const currentSetRef = useRef(currentSet);
+  const isFinalSetAndFinishedRef = useRef(isFinalSetAndFinished);
+
+  useEffect(() => { isStartedRef.current = isStarted; }, [isStarted]);
+  useEffect(() => { isEngineReadyRef.current = isEngineReady; }, [isEngineReady]);
+  useEffect(() => { isMeRef.current = isMe; }, [isMe]);
+  useEffect(() => { currentLineRef.current = currentLine; }, [currentLine]);
+  useEffect(() => { currentChunkIdxRef.current = currentChunkIdx; }, [currentChunkIdx]);
+  useEffect(() => { roomStateRef.current = roomState; }, [roomState]);
+  useEffect(() => { currentLineIdxRef.current = currentLineIdx; }, [currentLineIdx]);
+  useEffect(() => { canSkipRef.current = canSkip; }, [canSkip]);
+  useEffect(() => { nextSetRef.current = nextSet; }, [nextSet]);
+  useEffect(() => { isMineRef.current = isMine; }, [isMine]);
+  useEffect(() => { currentSetRef.current = currentSet; }, [currentSet]);
+  useEffect(() => { isFinalSetAndFinishedRef.current = isFinalSetAndFinished; }, [isFinalSetAndFinished]);
+
+  const handleKeydown = useCallback((e: KeyboardEvent) => {
+    const _canSkip = canSkipRef.current;
+    const _nextSet = nextSetRef.current;
+    const _isFinalSetAndFinished = isFinalSetAndFinishedRef.current;
+    if (e.code === 'Space' && _canSkip) {
       e.preventDefault();
-      if (nextSet) {
-        const skipToSec = (nextSet.timeMs / 1000) - 3;
+      if (_nextSet) {
+        const skipToSec = (_nextSet.timeMs / 1000) - 3;
         if (playerRef.current?.seekTo) {
           const t = Math.max(0, skipToSec);
           playerRef.current.seekTo(t, true);
           updateRoomPlayback(roomId, t);
         }
-      } else if (isFinalSetAndFinished) {
+      } else if (_isFinalSetAndFinished) {
         if (endTimeMs) {
           const t = endTimeMs / 1000;
           playerRef.current?.seekTo(t, true);
@@ -309,22 +341,26 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       }
       return;
     }
-    if (!isStarted || !isEngineReady || !isMe || e.key.length > 1 || e.altKey || e.ctrlKey || e.metaKey) return;
-    const chunk = currentLine?.chunks?.[currentChunkIdx];
+    if (!isStartedRef.current || !isEngineReadyRef.current || !isMeRef.current || e.key.length > 1 || e.altKey || e.ctrlKey || e.metaKey) return;
+    const chunk = currentLineRef.current?.chunks?.[currentChunkIdxRef.current];
     if (!chunk) return;
+    const rs = roomStateRef.current;
     if (keygraph.next(e.key.toLowerCase())) {
-      // sound.play(); // 打鍵音は不要との要望により無効化
       setComboAnimKey(k => k + 1);
-      if (roomState?.sharedScore !== undefined) incrementSharedScore(roomId, roomState.sharedScore + 10);
+      if (rs?.sharedScore !== undefined) incrementSharedScore(roomId, rs.sharedScore + 10);
 
       const isFinished = keygraph.is_finished();
 
       if (isFinished) {
-        const gl = roomState?.globalLineIdx ?? 0;
-        const gc = roomState?.globalChunkIdx ?? 0;
+        const currentLine = currentLineRef.current!;
+        const currentChunkIdx = currentChunkIdxRef.current;
+        const currentLineIdx = currentLineIdxRef.current;
+        const currentSet = currentSetRef.current;
+        const gl = rs?.globalLineIdx ?? 0;
+        const gc = rs?.globalChunkIdx ?? 0;
         if (currentLine.absLineIdx === gl && currentChunkIdx === gc) {
-          const combo = (roomState?.sharedCombo || 0) + 1;
-          updateSharedCombo(roomId, combo, Math.max(roomState?.maxSharedCombo || 0, combo));
+          const combo = (rs?.sharedCombo || 0) + 1;
+          updateSharedCombo(roomId, combo, Math.max(rs?.maxSharedCombo || 0, combo));
           let nl = gl, nc = gc + 1;
           if (nc >= currentLine.chunks.length) { nl++; nc = 0; }
           updateGlobalProgress(roomId, nl, nc);
@@ -341,15 +377,15 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           let nextM = -1;
           if (currentSet?.lines) {
             for (let i = currentLineIdx + 1; i < currentSet.lines.length; i++) {
-              if (isMine(currentSet.lines[i].absLineIdx)) { nextM = i; break; }
+              if (isMineRef.current(currentSet.lines[i].absLineIdx)) { nextM = i; break; }
             }
           }
           if (nextM !== -1) {
             setCurrentLineIdx(nextM);
             setCurrentChunkIdx(0);
-            nextLineIdxForFirebase = currentSet.lines[nextM].absLineIdx;
+            nextLineIdxForFirebase = currentSet!.lines[nextM].absLineIdx;
             nextChunkIdxForFirebase = 0;
-            nextChunkToBuild = currentSet.lines[nextM].chunks[0];
+            nextChunkToBuild = currentSet!.lines[nextM].chunks[0];
           } else {
             setCurrentLineIdx(-1);
             nextLineIdxForFirebase = -1;
@@ -371,18 +407,15 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         } else {
           setIsEngineReady(false);
         }
-      } else {
-        if (roomId && playerId && currentLine) {
-          updatePlayerProgress(roomId, playerId, currentLine.absLineIdx, currentChunkIdx, 0, 0, 0, currentChunkIdx, keygraph.seq_done()?.length || 0, keygraph.seq_done() || '', chunk.text);
-        }
       }
+      // 【最適化】チャンク完了前の中間打鍵はFirebaseに書き込まない
     } else { try { miss_sound.play(); } catch (_) { } }
-  };
+  }, [roomId, playerId, endTimeMs]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
-  }, [isStarted, isEngineReady, isMe, currentLine, currentChunkIdx, roomState, roomId, currentBlockIdx, currentLineIdx, canSkip, nextSet, isMine]);
+  }, [handleKeydown]);
 
   useEffect(() => {
     if (!isStarted || isGameOver || !roomState || !currentSet || currentLineIdx === -1) return;
