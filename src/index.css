@@ -12,7 +12,8 @@
   --kawaii-purple: #ce93d8;
   --glass-bg: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.3);
-  font-size: 20px; /* ベースサイズを20pxに設定。Tailwindのrem単位がこれに比例します */
+  font-size: 20px;
+  /* ベースサイズを20pxに設定。Tailwindのrem単位がこれに比例します */
 }
 
 body {
@@ -135,4 +136,8 @@ h3,
     scrollbar-width: none;
     /* Firefox */
   }
+}
+
+header {
+  height: 1rem;
 }

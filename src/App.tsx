@@ -37,9 +37,22 @@ function App() {
   const [activeBlockIdx, setActiveBlockIdx] = useState(0);
 
   // フォント設定
-  const [selectedFont, setSelectedFont] = useState("'Noto Sans Mono', monospace");
+  const [selectedFont, setSelectedFont] = useState("'M PLUS Rounded 1c', sans-serif");
+  
+  // 画面幅に応じてサイドバーを自動で閉じる (1000px以下で一旦閉じる)
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1000) {
+        setShowHistory(false);
+        setShowLyrics(false);
+      }
+    };
+    handleResize(); // 初期実行
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
-  // 履歴管理
+  // 日本語のセグメンテーション（ふりがな付与）
   const [history, setHistory] = useState<PlayedHistoryItem[]>(() => {
     const saved = localStorage.getItem('kytp_history');
     return saved ? JSON.parse(saved) : [];
@@ -249,14 +262,14 @@ function App() {
         ) : (
           <button
             onClick={() => setShowHistory(true)}
-            className="hidden xl:flex h-20 self-start w-6 bg-white/50 backdrop-blur-sm border-r border-y border-rose-100 items-center justify-center text-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all z-20 shadow-sm mt-8"
+            className="flex h-20 self-start w-6 bg-white/50 backdrop-blur-sm border-r border-y border-rose-100 items-center justify-center text-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all z-20 shadow-sm mt-8"
           >
             <span className="text-xs transform scale-y-150 rotate-180">◀</span>
           </button>
         )}
 
-        {/* 中央カラム: プレイヤー (スクロールを禁止し、常に全画面収まるように調整) */}
-        <main className="flex-1 flex flex-col min-w-0 h-full animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden">
+        {/* 中央カラム: プレイヤー (絶対に見切れないよう、必要に応じてスクロールを許可) */}
+        <main className="flex-1 flex flex-col min-w-0 h-full animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto scrollbar-hide">
           {/* ヘッダーラベル */}
           <div className="flex items-center gap-1.5 mb-3 ml-1 flex-shrink-0">
             <div className="w-1.5 h-3 bg-rose-400 rounded-full"></div>
@@ -432,7 +445,7 @@ function App() {
         ) : (
           <button
             onClick={() => setShowLyrics(true)}
-            className="hidden xl:flex h-20 self-start w-6 bg-white/50 backdrop-blur-sm border-l border-y border-purple-100 items-center justify-center text-purple-300 hover:bg-purple-50 hover:text-purple-500 transition-all z-20 shadow-sm mt-8"
+            className="flex h-20 self-start w-6 bg-white/50 backdrop-blur-sm border-l border-y border-purple-100 items-center justify-center text-purple-300 hover:bg-purple-50 hover:text-purple-500 transition-all z-20 shadow-sm mt-8"
           >
             <span className="text-xs transform scale-y-150">▶</span>
           </button>

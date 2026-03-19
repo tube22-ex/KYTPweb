@@ -24,18 +24,18 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
 
   return (
     <div className="w-full relative">
-      {/* 舞台エリア (スクロールバーを完全に禁止し、全員を表示) */}
-      <div className="relative w-full aspect-[21/4] stage-floor-cute group bubble-bg rounded-none border-x-4 border-white shadow-inner pt-10 overflow-hidden scrollbar-hide">
+      {/* 舞台エリア (絶対的な比率指定を廃止し、中身に合わせて高さが伸びるように変更) */}
+      <div className="relative w-full min-h-[220px] stage-floor-cute group bubble-bg rounded-none border-x-4 border-white shadow-inner pt-16 pb-4 overflow-visible scrollbar-hide">
         {/* 装飾的な雲やキラキラなどを背景に追加可能 */}
         <div className="absolute top-4 left-10 w-24 h-8 bg-white/40 rounded-full blur-xl animate-pulse" />
         <div className="absolute bottom-10 right-20 w-32 h-12 bg-white/30 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '1s' }} />
 
-        {/* プレイヤー整列 (隙間を自動調整して全員収める) */}
-        <div className="absolute inset-x-0 bottom-0 flex items-end justify-center px-4 pb-0 gap-2 sm:gap-4 md:gap-8 lg:gap-12 z-20 min-w-0 overflow-hidden">
+        {/* プレイヤー整列 (relativeに変更し、親の高さに影響を与えるようにした) */}
+        <div className="relative flex items-end justify-center px-4 gap-2 sm:gap-4 md:gap-8 lg:gap-12 z-20 min-w-0">
           {players.map(p => (
             <div key={p.id} className="flex-1 min-w-0 flex flex-col items-center transition-all duration-500 hover:scale-110 relative">
-              {/* キャラクター (高さを抑える) */}
-              <div className="relative h-24 w-full flex flex-col items-center justify-end">
+              {/* キャラクター (画面の高さに合わせて動的にリサイズ) */}
+              <div className="relative h-[22vh] min-h-[160px] max-h-[350px] w-full flex flex-col items-center justify-end group-hover:z-30">
                 {/* ホスト/YOUタグ (さらに強調) */}
                 <div className="absolute -top-4 right-1/2 translate-x-12 flex flex-col gap-1 items-end z-30">
                   {p.id === hostId && (
@@ -47,7 +47,7 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
                 </div>
 
                 <img
-                  src="https://proxy.misskeyusercontent.jp/avatar.webp?url=https%3A%2F%2Fmedia.misskeyusercontent.jp%2Fio%2F93adc6b2-1440-427f-98ae-f66f32477d4d.webp&avatar=1"
+                  src="https://i.imgur.com/ybIOOfi.png"//画像URL
                   alt=""
                   className="h-full w-auto object-contain drop-shadow-[0_5px_10px_rgba(0,0,0,0.2)]"
                 />
