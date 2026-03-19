@@ -312,8 +312,8 @@ function App() {
           </button>
         )}
 
-        {/* 中央カラム: プレイヤー (絶対に見切れないよう、必要に応じてスクロールを許可) */}
-        <main className="flex-1 flex flex-col min-w-0 h-full animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto scrollbar-hide">
+        {/* 中央カラム: プレイヤー (プレイヤーラベルごとスクロール) */}
+        <main className="flex-1 flex flex-col min-w-0 h-full animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto custom-scrollbar pr-2">
           {/* ヘッダーラベル */}
           <div className="flex items-center gap-1.5 mb-3 ml-1 flex-shrink-0">
             <div className="w-1.5 h-3 bg-rose-400 rounded-full"></div>
@@ -321,7 +321,7 @@ function App() {
           </div>
 
           {/* コンテンツエリア */}
-          <div className="flex-1">
+          <div className="flex-1 pb-4">
             {!inRoom ? (
               /* 入室画面 */
               <div className="bg-white border-4 border-white shadow-xl p-8 rounded-none w-full max-w-md mx-auto relative z-10 overflow-hidden bubble-bg animate-in zoom-in-95 duration-500">
@@ -431,6 +431,7 @@ function App() {
                       roomState={roomState}
                       onBackToMenu={handleBackToMenu}
                       onBlockChange={(idx) => setActiveBlockIdx(idx)}
+                      volume={volume}
                     />
                   </div>
                 )}

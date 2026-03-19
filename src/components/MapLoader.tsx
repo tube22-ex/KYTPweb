@@ -34,8 +34,8 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
     let targetId = mapId.trim();
     const match = targetId.match(/\/type\/(\d+)$/);
     if (match) {
-        targetId = match[1];
-        setMapId(targetId);
+      targetId = match[1];
+      setMapId(targetId);
     }
     if (targetId) {
       fetchPreview(targetId);
@@ -73,7 +73,7 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
     <div className="bg-white border-4 border-white shadow-[0_10px_30px_rgba(255,133,161,0.05)] p-8 rounded-none w-full h-full flex flex-col gap-6 relative overflow-hidden bubble-bg">
 
       <div className="flex flex-col gap-1">
-        <h3 className="text-xl font-black font-premium text-zinc-700 italic uppercase tracking-tighter">譜面ID</h3>
+        <h3 className="text-xl font-black font-premium text-zinc-700 italic uppercase tracking-tighter">譜面ID・URL</h3>
         <p className="text-[10px] text-rose-300 font-black uppercase tracking-widest italic">譜面IDを入力してフォーカスを外すとプレビューが表示されます</p>
       </div>
 
@@ -111,8 +111,8 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
         {previewData && (
           <div className="bg-rose-50/30 border-2 border-rose-100 p-4 flex gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
             {previewData.videoId && (
-              <img 
-                src={`https://img.youtube.com/vi/${previewData.videoId}/mqdefault.jpg`} 
+              <img
+                src={`https://img.youtube.com/vi/${previewData.videoId}/mqdefault.jpg`}
                 className="w-32 aspect-video object-cover border-2 border-white shadow-sm"
                 alt=""
               />

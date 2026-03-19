@@ -24,14 +24,13 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
 
   return (
     <div className="w-full relative">
-      {/* 舞台エリア (絶対的な比率指定を廃止し、中身に合わせて高さが伸びるように変更) */}
-      <div className="relative w-full min-h-[220px] stage-floor-cute group bubble-bg rounded-none border-x-4 border-white shadow-inner pt-16 pb-4 overflow-visible scrollbar-hide">
-        {/* ステージのキラキラ・環境エフェクト */}
-        <div className="stage-glow" />
+      {/* 舞台エリア (ダークステージ) */}
+      <div className="relative w-full min-h-[220px] stage-floor-dark group rounded-none border-x-4 border-zinc-900 shadow-inner pt-16 pb-4 overflow-visible scrollbar-hide">
 
-        {/* 装飾的な雲やキラキラなどを背景に追加可能 */}
-        <div className="absolute top-4 left-10 w-24 h-8 bg-white/40 rounded-full blur-xl animate-pulse" />
-        <div className="absolute bottom-10 right-20 w-32 h-12 bg-white/30 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '1s' }} />
+        {/* 上部の骨組みとスピーカー装飾 */}
+        <div className="stage-truss" />
+        <div className="stage-speaker stage-speaker-left" />
+        <div className="stage-speaker stage-speaker-right" />
 
         {/* プレイヤー整列 (relativeに変更し、親の高さに影響を与えるようにした) */}
         <div className="relative flex items-end justify-center px-4 gap-2 sm:gap-4 md:gap-8 lg:gap-12 z-20 min-w-0">
@@ -49,11 +48,13 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
                   )}
                 </div>
 
-                <img
-                  src="https://i.imgur.com/ybIOOfi.png"//画像URL
-                  alt=""
-                  className="h-full w-auto object-contain drop-shadow-[0_5px_10px_rgba(0,0,0,0.2)]"
-                />
+                <div className="relative inline-block h-full">
+                  <img
+                    src="https://i.imgur.com/3zyCq3U.png"//画像URL
+                    alt=""
+                    className="relative z-10 h-full w-auto object-contain brightness-[0.90] contrast-[1.2] drop-shadow-[0_10px_15px_rgba(0,0,0,0.6)]"
+                  />
+                </div>
               </div>
 
               {/* プレイヤー情報 (さらに拡大) */}

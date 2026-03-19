@@ -12,8 +12,8 @@ interface Props {
   roomState: RoomState | null;
   onBackToMenu: () => void;
   onBlockChange?: (blockIdx: number) => void;
+  volume?: number;
 }
-
 
 const LineItem: React.FC<any> = ({
   line,
@@ -66,7 +66,7 @@ const LineItem: React.FC<any> = ({
   );
 };
 
-export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomState, onBackToMenu, onBlockChange }) => {
+export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomState, onBackToMenu, onBlockChange, volume = 50 }) => {
   const [currentBlockIdx, setCurrentBlockIdx] = useState(0);
   const [currentLineIdx, setCurrentLineIdx] = useState(0);
   const [currentChunkIdx, setCurrentChunkIdx] = useState(0);
@@ -118,6 +118,12 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   }, []);
 
   useEffect(() => {
+    if (playerRef.current && typeof playerRef.current.setVolume === 'function') {
+      try { playerRef.current.setVolume(volume); } catch (e) {}
+    }
+  }, [volume, playerState]);
+
+  useEffect(() => {
     if (!mapData.videoId) return;
     const curId = Date.now();
     instanceIdRef.current = curId;
@@ -131,6 +137,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           onReady: (e: any) => {
             if (instanceIdRef.current !== curId) { e.target.destroy(); return; }
             playerRef.current = e.target;
+            try { e.target.setVolume(volume); } catch (err) {}
             setVideoDuration(e.target.getDuration());
             const start = roomState?.startTime;
             if (start) getServerTimeOffset().then(off => {
