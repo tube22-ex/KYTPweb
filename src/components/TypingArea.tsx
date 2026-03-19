@@ -31,7 +31,7 @@ const LineItem: React.FC<any> = ({
 
   return (
     <div className={`py-1 px-4 transition-all duration-300 rounded-none border-l-4 ${isActiveLine ? 'bg-rose-50/50 border-rose-400 shadow-sm relative z-10 scale-[1.01]' : 'border-transparent'}`}>
-      <div className='max-[1920px]:text-[clamp(0.8rem,1.5vw,1.1rem)] min-[1921px]:text-[clamp(1rem,2vw,1.8rem)] font-black leading-tight flex flex-wrap gap-x-4 tracking-tighter text-zinc-600'>
+      <div className='text-[20px] font-black leading-tight flex flex-wrap gap-x-4 tracking-tighter text-zinc-600'>
         {line.chunks.map((chunk: any, i: number) => {
           const isChunkActive = isActiveLine && i === currentChunkIdx;
           const isOpponentActiveChunk = isSomeoneElseActive && i === (opponentChunkIdx ?? 0);
@@ -490,19 +490,19 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const multiplier = getComboMultiplier(currentCombo);
 
   return (
-    <div className='flex flex-col items-center w-full max-w-none mx-auto pb-2 px-0 h-full overflow-y-auto custom-scrollbar'>
+    <div className='flex flex-col items-center w-full max-w-none mx-auto p-0 h-full overflow-hidden'>
       {/* プレイ画面全体をくくる枠 (角を丸くせず、paddingを0に、上辺のボーダーのみ削る) */}
-      <div className="w-full border-4 border-white rounded-none bg-white/5 backdrop-blur-sm p-0 flex flex-col gap-0 shadow-2xl overflow-hidden">
+      <div className="w-full border-4 border-white rounded-none bg-white/5 backdrop-blur-sm p-0 flex flex-col h-full overflow-hidden">
 
         {/* 1. プレイヤーレーン (背景を透過させて枠に密着) */}
-        <div className="w-full bg-white/10 border-b-2 border-white/20">
+        <div className="w-full bg-white/10 border-b-2 border-white/20 flex-shrink-0" style={{ height: '180px' }}>
           <PlayerLane roomState={roomState} playerId={playerId} />
         </div>
 
         {!isGameOver && (
           <div className="w-full flex flex-col gap-0">
             {/* 2. 歌詞モニターエリア */}
-            <div className="w-full p-2 min-h-[140px] flex-1 flex flex-col justify-center relative overflow-hidden bubble-bg bg-white border-y-4 border-rose-200">
+            <div className="w-full p-2 flex flex-col justify-center relative overflow-hidden bubble-bg bg-white border-y-4 border-rose-200 lyrics-area">
               {canSkip && (
                 <div className="absolute top-3 right-5 animate-bounce z-20">
                   <div className="px-3 py-1 bg-rose-400 text-white text-[10px] font-black rounded-full shadow-md flex items-center gap-2">
@@ -532,7 +532,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             </div>
 
             {/* 3. 入力インジケーターバー */}
-            <div className="w-full bg-rose-400 flex flex-col relative overflow-hidden border-b-4 border-white/10">
+            <div className="w-full bg-rose-400 flex flex-col relative overflow-hidden border-b-4 border-white/10 target-bar">
 
               {/* ライン進捗バー (タイマー) */}
               {isStarted && !isGameOver && (() => {
@@ -562,7 +562,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 );
               })()}
 
-              <div className="h-16 flex items-center justify-between px-10">
+              <div className="flex-1 flex items-center justify-between px-10">
                 <div className="flex flex-col items-start leading-none mt-1">
                   <span className="text-[12px] font-black text-rose-100 uppercase italic">Target</span>
                   <span className="text-sm font-black text-white italic">{isMe ? '打って！' : '待機'}</span>
@@ -571,7 +571,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 <div className="flex-1 flex items-center justify-start pl-10">
                   {isEngineReady && isMe ? (
                     <div className="flex items-center gap-2">
-                      <span className="max-[1920px]:text-2xl min-[1921px]:text-4xl font-black italic tracking-wider text-white drop-shadow-lg">
+                      <span className="text-3xl font-black italic tracking-wider text-white drop-shadow-lg">
                         <span className="opacity-30">{(keygraph.key_done() || '').toUpperCase()}</span>
                         <span>{(keygraph.key_candidate() || '').toUpperCase()}</span>
                       </span>
@@ -611,11 +611,11 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             </div>
 
             {/* 4. ダッシュボードパネル (横に並べつつ、枠に密着) */}
-            <div className="w-full flex shrink-0">
+            <div className="w-full flex shrink-0 score-video-area">
               {/* 左パネル: スコア */}
               <div className="flex-[1_1_0%] min-w-0 p-3 flex flex-col items-center justify-center bubble-bg bg-[#fff5f8] border-r-2 border-rose-200 overflow-visible">
-                <span className="font-black uppercase tracking-widest mb-0.5" style={{ fontSize: 'clamp(12px, 1.2vw, 14px)', color: '#1a1a1a', opacity: 1, textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>合計スコア</span>
-                <div className="font-black tracking-tighter shrink-0" style={{ fontSize: 'clamp(24px, 3vw, 40px)', color: '#1a1a1a', textShadow: '0 2px 4px rgba(0,0,0,0.15)', opacity: 1 }}>{scoreText}</div>
+                <span className="font-black uppercase tracking-widest mb-0.5 score-label" style={{ color: '#1a1a1a', opacity: 1, textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>合計スコア</span>
+                <div className="font-black tracking-tighter shrink-0 score-value" style={{ color: '#1a1a1a', textShadow: '0 2px 4px rgba(0,0,0,0.2)', opacity: 1 }}>{scoreText}</div>
               </div>
 
               {/* 中央パネル: ビデオ (柔軟なサイズ調整で中央を維持) */}
@@ -632,19 +632,19 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 </div>
 
                 <div className="flex gap-2 mt-4">
-                  <button
-                    onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) { } onBackToMenu(); }}
-                    className="flex-1 py-1.5 bg-rose-400 text-white text-[10px] font-black rounded-none hover:bg-rose-500 shadow-sm transition-colors"
-                  >
-                    MENU
-                  </button>
-                  <button className="flex-1 py-1.5 bg-white border border-zinc-100 text-[10px] text-zinc-400 font-black rounded-none hover:bg-zinc-50 transition-colors">ヘルプ</button>
+                    <button
+                      onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) { } onBackToMenu(); }}
+                      className="flex-1 bg-rose-400 text-white font-black rounded-none hover:bg-rose-500 shadow-sm transition-colors menu-button"
+                    >
+                      MENU
+                    </button>
+                    <button className="flex-1 bg-white border border-zinc-100 text-zinc-400 font-black rounded-none hover:bg-zinc-50 transition-colors help-button">ヘルプ</button>
                 </div>
               </div>
             </div>
 
             {/* 5. プログレスバー (最下部にフラットに配置) */}
-            <div className="w-full h-2 bg-zinc-200 overflow-hidden relative">
+            <div className="w-full bg-zinc-200 overflow-hidden relative footer-area">
               <div
                 className="h-full bg-gradient-to-r from-rose-400 to-rose-500 transition-all duration-500 ease-out"
                 style={{ width: `${Math.max(0, Math.min(100, (currentTime / (videoDuration || 1)) * 100))}%` }}
@@ -655,14 +655,14 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       </div>
 
       {isGameOver && (
-        <div className='flex flex-col items-center gap-12 py-24 w-full bg-white border-4 border-white shadow-2xl relative overflow-hidden text-center rounded-none bubble-bg mt-12'>
+        <div className='flex flex-col items-center justify-center gap-4 py-8 w-full bg-white border-4 border-white shadow-2xl relative overflow-hidden text-center rounded-none bubble-bg h-full'>
           <div className='absolute -top-10 -left-10 w-40 h-40 bg-rose-100 blur-3xl opacity-50' />
           <div className='absolute -bottom-10 -right-10 w-40 h-40 bg-purple-100 blur-3xl opacity-50' />
 
           <div className='text-8xl font-black text-rose-400 italic tracking-tighter drop-shadow-lg scale-y-110 leading-none'>FINISH!</div>
           <div className='flex flex-col gap-4'>
-            <div className='font-black uppercase tracking-tighter' style={{ fontSize: 'clamp(24px, 3vw, 40px)', color: '#1a1a1a', opacity: 1, textShadow: '0 2px 4px rgba(0,0,0,0.15)' }}>ステージスコア: <span className='text-rose-500 hover:text-rose-600 transition-colors'>{scoreText}</span></div>
-            <div className='font-bold uppercase tracking-[0.5em]' style={{ fontSize: 'clamp(12px, 1.2vw, 14px)', color: '#666666', opacity: 1 }}>最大コンボ: {roomState?.maxSharedCombo || 0}</div>
+            <div className='font-black uppercase tracking-tighter' style={{ fontSize: '40px', color: '#1a1a1a', opacity: 1, textShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>ステージスコア: <span className='text-rose-500 hover:text-rose-600 transition-colors'>{scoreText}</span></div>
+            <div className='font-bold uppercase tracking-[0.5em]' style={{ fontSize: '14px', color: '#666666', opacity: 1 }}>最大コンボ: {roomState?.maxSharedCombo || 0}</div>
           </div>
           <button
             onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) { } onBackToMenu(); }}

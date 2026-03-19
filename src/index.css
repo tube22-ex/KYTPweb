@@ -16,6 +16,14 @@
   /* ベースサイズを20pxに設定。Tailwindのrem単位がこれに比例します */
 }
 
+body, html {
+  overflow: hidden !important;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
 body {
   margin: 0;
   background: linear-gradient(135deg, #fff5f7 0%, #fff 50%, #f6f5ff 100%);
@@ -90,6 +98,32 @@ h3,
   }
 }
 
+/* 動画サムネイル調整 */
+.video-thumbnail, iframe, .youtube-embed, #youtube-player {
+  height: 130px !important;
+  width: auto !important;
+  aspect-ratio: 16 / 9 !important;
+  object-fit: cover !important;
+}
+
+/* スコア表示調整 */
+.score-value {
+  font-size: 28px !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+}
+
+.score-label {
+  font-size: 12px !important;
+  margin: 0 0 2px 0 !important;
+}
+
+/* MENUボタン・ヘルプ */
+.menu-button, .help-button {
+  padding: 4px 12px !important;
+  font-size: 12px !important;
+}
+
 /* カスタムスクロールバー */
 ::-webkit-scrollbar {
   width: 10px;
@@ -125,7 +159,7 @@ h3,
   left: 0;
   width: 100%;
   height: 35%;
-  background: 
+  background:
     radial-gradient(ellipse at 50% 0%, rgba(255, 255, 200, 0.25) 0%, transparent 70%),
     linear-gradient(to bottom, #333 0%, #0a0a0a 100%);
   border-top: 2px solid #000;
@@ -140,7 +174,7 @@ h3,
   left: 0;
   width: 100%;
   height: 40px;
-  background: 
+  background:
     linear-gradient(90deg, transparent 48%, #999 49%, #999 51%, transparent 52%),
     linear-gradient(45deg, transparent 48%, #666 49%, #666 51%, transparent 52%),
     linear-gradient(-45deg, transparent 48%, #666 49%, #666 51%, transparent 52%),
@@ -195,6 +229,67 @@ h3,
   pointer-events: none;
 }
 
+.layout-root {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start !important;
+  width: 1280px !important;
+  height: 650px !important; /* BASE_HEIGHT(720) - Header(70) */
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.center-column {
+  width: 860px !important;
+  min-width: 860px !important;
+  max-width: 860px !important;
+  height: 650px !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* 各エリアの高さ固定 */
+.stage-container {
+  height: 180px !important;
+  min-height: 180px !important;
+  max-height: 180px !important;
+  flex-shrink: 0 !important;
+  overflow: hidden !important;
+}
+
+.lyrics-area {
+  height: 160px !important;
+  min-height: 160px !important;
+  max-height: 160px !important;
+  flex-shrink: 0 !important;
+  overflow: hidden !important;
+}
+
+.target-bar {
+  height: 56px !important;
+  min-height: 56px !important;
+  max-height: 56px !important;
+  flex-shrink: 0 !important;
+}
+
+.score-video-area {
+  height: 160px !important;
+  min-height: 160px !important;
+  max-height: 160px !important;
+  flex-shrink: 0 !important;
+  overflow: hidden !important;
+}
+
+.footer-area {
+  height: 24px !important;
+  flex-shrink: 0 !important;
+  overflow: hidden !important;
+}
+
 /* スクロールバーを非表示にするためのユーティリティ */
 @layer utilities {
   .scrollbar-hide::-webkit-scrollbar {
@@ -210,5 +305,5 @@ h3,
 }
 
 header {
-  height: 1rem;
+  height: 20px;
 }
