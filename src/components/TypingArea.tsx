@@ -499,23 +499,38 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginTop: 4 }}>{mapData.artist || 'Unknown Artist'}</div>
               </div>
 
-              <button
-                onClick={() => setRoomStartTime(roomId)}
-                style={{
-                  padding: '10px 40px',
-                  fontSize: 22,
+              {isHost ? (
+                <button
+                  onClick={() => setRoomStartTime(roomId)}
+                  style={{
+                    padding: '10px 40px',
+                    fontSize: 22,
+                    fontWeight: 900,
+                    color: '#fff',
+                    background: 'linear-gradient(135deg, #f48, #f06)',
+                    border: 'none',
+                    borderRadius: 40,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 16px rgba(255,0,100,0.3)',
+                  }}
+                  className="hover:scale-110 active:scale-95 transition-all transform"
+                >
+                  START
+                </button>
+              ) : (
+                <div style={{
+                  padding: '10px 30px',
+                  fontSize: 16,
                   fontWeight: 900,
-                  color: '#fff',
-                  background: 'linear-gradient(135deg, #f48, #f06)',
-                  border: 'none',
+                  color: '#f48',
+                  background: '#fff',
+                  border: '2px solid #f48',
                   borderRadius: 40,
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 16px rgba(255,0,100,0.3)',
-                }}
-                className="hover:scale-110 active:scale-95 transition-all transform"
-              >
-                START
-              </button>
+                  opacity: 0.8,
+                }} className="animate-pulse">
+                  WAITING FOR HOST...
+                </div>
+              )}
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }} className="animate-in fade-in slide-in-from-bottom-4 duration-1000">
                 {roomState && Object.values(roomState.players).map(p => (
@@ -592,15 +607,20 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                         }
                       }
 
-                      const isPreviousChunk = isChunkFinished || isPreStart;
                       const isCurrentChunk = isChunkActive;
 
                       return (
                         <span key={cIdx}>
                           {(Array.from(chunk.text) as string[]).map((char, charIdx) => {
-                            const isCharTyped = isPreviousChunk || (isCurrentChunk && charIdx < charPtr);
+                            const isCharFinished = isChunkFinished || (isCurrentChunk && charIdx < charPtr);
+                            let className = '';
+                            if (isCharFinished) {
+                              className = 'opacity-30';
+                            } else if (isPreStart) {
+                              className = 'opacity-0';
+                            }
                             return (
-                              <span key={charIdx} className={isCharTyped ? 'opacity-30' : ''}>
+                              <span key={charIdx} className={className}>
                                 {char}
                               </span>
                             );
