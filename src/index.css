@@ -16,7 +16,8 @@
   /* ベースサイズを20pxに設定。Tailwindのrem単位がこれに比例します */
 }
 
-body, html {
+body,
+html {
   overflow: hidden !important;
   width: 100vw;
   height: 100vh;
@@ -119,7 +120,8 @@ h3,
 }
 
 /* MENUボタン・ヘルプ */
-.menu-button, .help-button {
+.menu-button,
+.help-button {
   padding: 4px 12px !important;
   font-size: 12px !important;
 }
@@ -143,6 +145,15 @@ h3,
   background: #ff85a1;
 }
 
+/* 譜面リスト専用：より視認性の高いスクロールバー */
+.vibrant-scrollbar::-webkit-scrollbar-thumb {
+  background: #ff85a1 !important;
+}
+
+.vibrant-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #f43f5e !important;
+}
+
 .stage-floor-dark {
   background-color: #1a1a1a;
   background-image: linear-gradient(to bottom, #111 0%, #2a2a2a 65%);
@@ -163,7 +174,7 @@ h3,
     radial-gradient(ellipse at 50% 0%, rgba(255, 255, 200, 0.25) 0%, transparent 70%),
     linear-gradient(to bottom, #333 0%, #0a0a0a 100%);
   border-top: 2px solid #000;
-  box-shadow: inset 0 5px 10px rgba(0,0,0,0.5);
+  box-shadow: inset 0 5px 10px rgba(0, 0, 0, 0.5);
   z-index: 1;
 }
 
@@ -182,7 +193,7 @@ h3,
   background-size: 60px 100%, 60px 100%, 60px 100%, 100% 100%;
   border-bottom: 3px solid #111;
   z-index: 10;
-  box-shadow: 0 15px 30px rgba(0,0,0,0.8);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8);
 }
 
 /* スピーカー（左右の黒い箱） */
@@ -196,6 +207,7 @@ h3,
   z-index: 2;
   border-radius: 4px;
 }
+
 .stage-speaker::after {
   content: '';
   position: absolute;
@@ -205,15 +217,17 @@ h3,
   height: 40px;
   border-radius: 50%;
   background: radial-gradient(circle at center, #000 30%, #222 100%);
-  box-shadow: 0 50px 0 0 rgba(0,0,0,0.8);
+  box-shadow: 0 50px 0 0 rgba(0, 0, 0, 0.8);
 }
+
 .stage-speaker-left {
   left: 20px;
-  box-shadow: 10px 10px 20px rgba(0,0,0,0.8);
+  box-shadow: 10px 10px 20px rgba(0, 0, 0, 0.8);
 }
+
 .stage-speaker-right {
   right: 20px;
-  box-shadow: -10px 10px 20px rgba(0,0,0,0.8);
+  box-shadow: -10px 10px 20px rgba(0, 0, 0, 0.8);
 }
 
 /* アバターの足元の影 */
@@ -224,7 +238,7 @@ h3,
   transform: translateX(-50%);
   width: 85%;
   height: 12px;
-  background: radial-gradient(ellipse at center, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 70%);
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 70%);
   z-index: 20;
   pointer-events: none;
 }
@@ -250,7 +264,8 @@ h3,
   left: 0 !important;
   width: 20px !important;
   z-index: 300 !important;
-  top: 100px; /* Adjust as needed */
+  top: 100px;
+  /* Adjust as needed */
 }
 
 .layout-root {
@@ -258,7 +273,8 @@ h3,
   flex-direction: row !important;
   align-items: flex-start !important;
   width: 1280px !important;
-  height: 780px !important; /* BASE_HEIGHT(850) - Header(70) */
+  height: 780px !important;
+  /* BASE_HEIGHT(850) - Header(70) */
   margin: 0 !important;
   padding: 0 !important;
   overflow: hidden !important;
@@ -272,12 +288,14 @@ h3,
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
-  position: relative !important; /* オーバーレイの基準点 */
+  position: relative !important;
+  /* オーバーレイの基準点 */
 }
 
 /* ステージ内のキャラクターを中央に配置 */
 .stage-floor-dark .relative.flex {
-  justify-content: center !important;  /* 左寄りをcenterに */
+  justify-content: center !important;
+  /* 左寄りをcenterに */
   align-items: flex-end !important;
   height: 100% !important;
 }
@@ -287,7 +305,8 @@ h3,
   margin: 0 auto !important;
 }
 
-.right-column, .guide-column {
+.right-column,
+.guide-column {
   height: 780px !important;
   display: flex !important;
   flex-direction: column !important;
@@ -343,18 +362,15 @@ h3,
 
 /* コンパクトなカード */
 .chart-card {
-  display: flex !important;
-  flex-direction: column !important;
+  display: block !important;
+  position: relative !important;
   cursor: pointer !important;
   background: white !important;
-  border: 2px solid #f3f4f6 !important;
   transition: all 0.2s ease !important;
 }
 
 .chart-card:hover {
-  border-color: #fb7185 !important;
   transform: translateY(-2px) !important;
-  box-shadow: 0 4px 12px rgba(251, 113, 133, 0.15) !important;
 }
 
 .chart-card img {
@@ -389,16 +405,17 @@ h3,
 
 /* 入力セクション圧縮 */
 .input-section {
-  padding: 4px 8px !important;
+  padding: 0 4px !important;
   display: flex !important;
   align-items: center !important;
-  gap: 8px !important;
+  gap: 4px !important;
   background: white !important;
   border-bottom: 1px solid #f3f4f6 !important;
 }
 
 .input-section .description {
-  display: none !important; /* 説明文は場所を取るので非表示か、プレースホルダーに統合 */
+  display: none !important;
+  /* 説明文は場所を取るので非表示か、プレースホルダーに統合 */
 }
 
 /* 各エリアの高さ固定（再配分） */

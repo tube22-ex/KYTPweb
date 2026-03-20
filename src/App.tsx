@@ -461,7 +461,13 @@ export default function App() {
                       <PlayerLane roomState={roomState} playerId={playerId} />
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                      <MapLoader onLoad={handleMapLoad} isHost={isHost} />
+                      <MapLoader 
+                        onLoad={handleMapLoad} 
+                        isHost={isHost} 
+                        roomId={roomId}
+                        playerName={playerName}
+                        roomState={roomState}
+                      />
                     </div>
                   </div>
                 ) : (

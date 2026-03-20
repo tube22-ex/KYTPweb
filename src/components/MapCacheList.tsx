@@ -4,10 +4,10 @@ import { ParseResult } from '../services/api';
 
 interface MapCacheListProps {
   onSelect: (data: ParseResult, mapId: string) => void;
-  isHost: boolean; // ★ 追加
+  onRequest?: (data: ParseResult, mapId: string) => void;
 }
 
-export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, isHost }) => {
+export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, onRequest }) => {
   const [cachedMaps, setCachedMaps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +78,7 @@ export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, isHost }) 
         <div className="text-xs font-black text-rose-300 uppercase italic tracking-widest">Select a stage to begin</div>
       </div>
 
-      <div className="chart-grid custom-scrollbar">
+      <div className="chart-grid custom-scrollbar vibrant-scrollbar">
         {cachedMaps.map((map) => {
           const thumbnail = map.videoId
             ? `https://img.youtube.com/vi/${map.videoId}/mqdefault.jpg`
@@ -87,31 +87,51 @@ export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, isHost }) 
           return (
             <button
               key={map.id}
-              onClick={() => isHost && onSelect(map as ParseResult, map.id)} // ★ ホストのみ選択可
-              disabled={!isHost} // ★ 追加
-              className={`chart-card ${!isHost ? 'opacity-40 cursor-not-allowed' : ''}`}
+              onClick={() => onSelect(map as ParseResult, map.id)}
+              className="chart-card group relative aspect-video overflow-hidden rounded-md shadow-sm hover:shadow-md transition-all border-none"
             >
-              {/* Square Thumbnail Area */}
-              <div className="w-full aspect-square bg-zinc-100 overflow-hidden relative">
-                {thumbnail ? (
-                  <img src={thumbnail} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[10px] text-zinc-300 font-black italic">NO IMAGE</div>
-                )}
-                {/* ID Tag */}
-                <div className="absolute top-1 left-1 bg-rose-500 text-white px-1.5 py-0.5 text-[8px] font-black italic shadow-sm z-10">
-                  # {map.id}
+              {/* Full Image background */}
+              {thumbnail ? (
+                <img src={thumbnail} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-zinc-200 flex items-center justify-center text-[8px] text-zinc-400 font-black italic">NO IMAGE</div>
+              )}
+              
+              {/* Top Band: Ranking & Title (Compact 6-col size) */}
+              <div className="absolute top-0 left-0 right-0 bg-white/80 py-1 px-2 flex items-start gap-1.5 border-b border-rose-100/10 pointer-events-none h-[38px]">
+                <span className="text-rose-500 text-[10px] font-black italic whitespace-nowrap shrink-0 mt-0.5">
+                  #{map.id}
+                </span>
+                <span className="text-[11px] font-black text-zinc-900 line-clamp-2 text-left leading-tight flex-1">
+                  {map.title}
+                </span>
+              </div>
+
+              {/* Bottom Band: Artist (Compact 6-col size) */}
+              <div className="absolute bottom-0 left-0 right-0 bg-white/80 py-0.5 px-2 border-t border-rose-100/5 pointer-events-none h-[28px] flex items-center">
+                <div className="text-[10px] font-black text-zinc-900 line-clamp-2 text-left leading-none flex-1">
+                  {map.artist || 'Unknown'}
                 </div>
               </div>
 
-              <div className="flex flex-col min-w-0">
-                <div className="title">
-                  {map.title || 'Untitled Stage'}
-                </div>
-                <div className="artist">
-                  {map.artist || 'Unknown Artist'}
-                </div>
-              </div>
+              {/* Quick Request Button (Guest only icon) */}
+              {onRequest && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRequest(map as ParseResult, map.id);
+                  }}
+                  className="absolute bottom-1 right-1 w-6 h-6 bg-rose-400 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-rose-500 hover:scale-110 active:scale-90 transition-all z-20 group/reqbtn"
+                  title="ワンクリックでリクエスト"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              )}
+
+              {/* Hover Effect Overlay */}
+              <div className="absolute inset-0 bg-rose-500/0 group-hover:bg-rose-500/10 transition-colors pointer-events-none" />
             </button>
           );
         })}

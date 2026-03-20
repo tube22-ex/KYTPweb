@@ -69,6 +69,14 @@ export interface RoomState {
   globalChunkIdx: number;
   playbackTime: number;
   players: Record<string, PlayerState>;
+  requests?: Record<string, {
+    mapId: string;
+    playerName: string;
+    userName: string; // players[id].name
+    timestamp: number;
+    title?: string;
+    videoId?: string; // ★ 追加
+  }>;
 }
 
 // ============================================================
@@ -295,6 +303,36 @@ export const deleteRoomIfEmpty = async (roomId: string): Promise<boolean> => {
     return true;
   }
   return false;
+};
+
+/**
+ * 譜面をリクエストします。
+ */
+export const requestMap = async (roomId: string, mapId: string, playerName: string, title?: string, videoId?: string) => {
+  const newRequestRef = ref(db, `rooms/${roomId}/requests/${Date.now()}_${Math.random().toString(36).substring(2, 6)}`);
+  await set(newRequestRef, {
+    mapId,
+    playerName,
+    timestamp: Date.now(),
+    title: title || null,
+    videoId: videoId || null
+  });
+};
+
+/**
+ * リクエストを削除します。
+ */
+export const removeRequest = async (roomId: string, requestId: string) => {
+  const requestRef = ref(db, `rooms/${roomId}/requests/${requestId}`);
+  await remove(requestRef);
+};
+
+/**
+ * 全リクエストを削除します。
+ */
+export const clearRequests = async (roomId: string) => {
+  const requestsRef = ref(db, `rooms/${roomId}/requests`);
+  await remove(requestsRef);
 };
 
 // ============================================================
