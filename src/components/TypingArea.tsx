@@ -561,32 +561,31 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                     }}
                   >
                     {line.chunks.map((chunk: any, cIdx: number) => {
-                      const isAssignedToMe = linePlayerId === playerId;
+                      const gl = roomState?.globalLineIdx ?? 0;
+                      const gc = roomState?.globalChunkIdx ?? 0;
+                      const p = roomState?.players?.[linePlayerId];
+
                       let isChunkFinished = false;
                       let isChunkActive = false;
                       let charPtr = 0;
 
-                      if (isAssignedToMe) {
-                        const myAbsLineIdx = currentLine?.absLineIdx ?? -1;
-                        if (line.absLineIdx < myAbsLineIdx) {
+                      // 1. チーム全体の進捗による判定 (最優先)
+                      if (line.absLineIdx < gl || (line.absLineIdx === gl && cIdx < gc)) {
+                        isChunkFinished = true;
+                      }
+                      // 2. 担当プレイヤーの進捗による判定 (先走り対応)
+                      else if (p) {
+                        if (p.currentLineIdx === -1 || line.absLineIdx < p.currentLineIdx) {
                           isChunkFinished = true;
-                        } else if (line.absLineIdx === myAbsLineIdx) {
-                          if (cIdx < currentChunkIdx) isChunkFinished = true;
-                          else if (cIdx === currentChunkIdx) {
-                            isChunkActive = true;
-                            charPtr = (keygraph as any)._seq_ptr_cur;
-                          }
-                        }
-                      } else {
-                        const p = roomState?.players?.[linePlayerId];
-                        if (p) {
-                          if (line.absLineIdx < p.currentLineIdx) {
+                        } else if (line.absLineIdx === p.currentLineIdx) {
+                          if (cIdx < p.currentChunkIdx) {
                             isChunkFinished = true;
-                          } else if (line.absLineIdx === p.currentLineIdx) {
-                            if (cIdx < p.currentChunkIdx) {
-                              isChunkFinished = true;
-                            } else if (cIdx === p.currentChunkIdx) {
-                              isChunkActive = true;
+                          } else if (cIdx === p.currentChunkIdx) {
+                            isChunkActive = true;
+                            // 自分自身ならローカルの keygraph を使う（低遅延）
+                            if (p.id === playerId && line.absLineIdx === currentLine?.absLineIdx) {
+                              charPtr = (keygraph as any)._seq_ptr_cur;
+                            } else {
                               charPtr = (p.currentTyping || "").length;
                             }
                           }
