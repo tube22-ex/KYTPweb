@@ -316,6 +316,28 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     const rs = roomStateRef.current;
     if (keygraph.next(e.key.toLowerCase())) {
       setInputCount(c => c + 1); // 1文字打つごとに再レンダリング
+
+      // キャラクター単位の同期
+      const ptr = (keygraph as any)._seq_ptr_cur;
+      const chunk = currentLineRef.current?.chunks?.[currentChunkIdxRef.current];
+      if (chunk) {
+        const typed = chunk.text.slice(0, ptr);
+        const word = chunk.text;
+        const rs = roomStateRef.current;
+        updatePlayerProgress(
+          roomId, playerId,
+          currentLineRef.current!.absLineIdx,
+          currentChunkIdxRef.current,
+          rs?.sharedCombo || 0,
+          rs?.maxSharedCombo || 0,
+          rs?.sharedScore || 0,
+          currentChunkIdxRef.current,
+          ptr,
+          typed,
+          word
+        ).catch(err => console.error('Character sync failed:', err));
+      }
+
       const isFinished = keygraph.is_finished();
 
       if (isFinished) {
@@ -414,15 +436,33 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   }, [roomState?.globalLineIdx, currentSet, isStarted, isGameOver, isMe, currentLineIdx, currentLine, playerIds, getAssignedPlayerId, playerId]);
 
   useEffect(() => {
-    if (!mapData.displaySets || !isStarted || isGameOver || !mapData.lines) return;
-    const playableLines = mapData.lines.filter(l => !l.isEnd);
-    const lastPlayableIdx = playableLines[playableLines.length - 1]?.absLineIdx ?? -1;
+    if (!mapData.displaySets || mapData.displaySets.length === 0 || !isStarted || isGameOver) return;
+    
+    // 表示（入力）される最後のセットの、最後の行の絶対インデックスを特定
+    const lastSet = mapData.displaySets[mapData.displaySets.length - 1];
+    const lastLineInAll = lastSet.lines[lastSet.lines.length - 1];
+    const lastAbsIdx = lastLineInAll?.absLineIdx ?? -1;
+    
     const gl = roomState?.globalLineIdx ?? 0;
-    if (gl > lastPlayableIdx && lastPlayableIdx !== -1) {
+    
+    // 詳細なデバッグログ
+    if (gl % 5 === 0 || (lastAbsIdx !== -1 && gl >= lastAbsIdx - 2)) {
+      console.log('[GameOverCheck DEBUG]', {
+        globalLineIdx: gl,
+        targetLastAbsIdx: lastAbsIdx,
+        blocksCount: mapData.displaySets.length,
+        currentBlockIdx,
+        mapDataLinesCount: mapData.lines?.length
+      });
+    }
+
+    // 最後の行を打ち終わった時点で終了
+    if (lastAbsIdx !== -1 && gl > lastAbsIdx) {
+      console.log('!!! All lines finished - triggering GameOver !!!');
       setIsGameOver(true);
       try { playerRef.current?.stopVideo(); } catch (e) { }
     }
-  }, [roomState?.globalLineIdx, mapData.lines, isGameOver, isStarted]);
+  }, [roomState?.globalLineIdx, mapData.displaySets, isGameOver, isStarted]);
 
 
   if (!mapData || !mapData.displaySets || mapData.displaySets.length === 0 || !currentSet) return <div>Loading...</div>;
@@ -501,18 +541,65 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             {/* 歌詞エリアをセンターカラム内に復元 */}
             <div className="lyrics-area" data-typing-progress={inputCount}>
               {currentSet?.lines.map((line: any, idx: number) => {
-                const isActive = line.absLineIdx === (currentLine?.absLineIdx ?? -1);
+                const globalLineIdx = roomState?.globalLineIdx ?? 0;
+                const nowMs = currentTime * 1000;
+                const isPreStart = nowMs < (currentSet?.timeMs ?? 0);
+
+                const isLineActive = line.absLineIdx === globalLineIdx && !isPreStart;
+
+                const linePlayerId = getAssignedPlayerId(line.absLineIdx, playerIds);
+                const linePlayerColor = roomState?.players?.[linePlayerId]?.color || '#e0195a';
+
                 return (
-                  <div key={idx} className={`lyric-line ${isActive ? 'active' : ''}`}>
+                  <div 
+                    key={idx} 
+                    className={`lyric-line ${isLineActive ? 'active' : ''}`}
+                    style={{ 
+                      color: linePlayerColor,
+                      borderLeftColor: linePlayerColor,
+                      backgroundColor: isLineActive ? `${linePlayerColor}15` : 'transparent'
+                    }}
+                  >
                     {line.chunks.map((chunk: any, cIdx: number) => {
-                      const isLineTyped = (currentLine && line.absLineIdx < currentLine.absLineIdx);
-                      const isPreviousChunk = isLineTyped || (isActive && cIdx < currentChunkIdx);
-                      const isCurrentChunk = isActive && cIdx === currentChunkIdx;
+                      const isAssignedToMe = linePlayerId === playerId;
+                      let isChunkFinished = false;
+                      let isChunkActive = false;
+                      let charPtr = 0;
+
+                      if (isAssignedToMe) {
+                        const myAbsLineIdx = currentLine?.absLineIdx ?? -1;
+                        if (line.absLineIdx < myAbsLineIdx) {
+                          isChunkFinished = true;
+                        } else if (line.absLineIdx === myAbsLineIdx) {
+                          if (cIdx < currentChunkIdx) isChunkFinished = true;
+                          else if (cIdx === currentChunkIdx) {
+                            isChunkActive = true;
+                            charPtr = (keygraph as any)._seq_ptr_cur;
+                          }
+                        }
+                      } else {
+                        const p = roomState?.players?.[linePlayerId];
+                        if (p) {
+                          if (line.absLineIdx < p.currentLineIdx) {
+                            isChunkFinished = true;
+                          } else if (line.absLineIdx === p.currentLineIdx) {
+                            if (cIdx < p.currentChunkIdx) {
+                              isChunkFinished = true;
+                            } else if (cIdx === p.currentChunkIdx) {
+                              isChunkActive = true;
+                              charPtr = (p.currentTyping || "").length;
+                            }
+                          }
+                        }
+                      }
+
+                      const isPreviousChunk = isChunkFinished || isPreStart;
+                      const isCurrentChunk = isChunkActive;
 
                       return (
                         <span key={cIdx}>
-                          {Array.from(chunk.text).map((char, charIdx) => {
-                            const isCharTyped = isPreviousChunk || (isCurrentChunk && charIdx < (keygraph as any)._seq_ptr_cur);
+                          {(Array.from(chunk.text) as string[]).map((char, charIdx) => {
+                            const isCharTyped = isPreviousChunk || (isCurrentChunk && charIdx < charPtr);
                             return (
                               <span key={charIdx} className={isCharTyped ? 'opacity-30' : ''}>
                                 {char}
@@ -528,7 +615,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
               })}
             </div>
 
-            <div className="w-full bg-rose-400 flex flex-col relative overflow-hidden border-b-4 border-white/10 target-bar">
+            <div 
+              className="w-full flex flex-col relative overflow-hidden border-b-4 border-white/10 target-bar"
+              style={{ backgroundColor: roomState?.players?.[activeLinePlayerId]?.color || '#fb7185' }}
+            >
               {isStarted && !isGameOver && (() => {
                 const myColor = roomState?.players?.[playerId]?.color ?? '#ffffff';
                 const line = currentSet.lines[0];

@@ -295,6 +295,7 @@ function buildDisplaySets(allLines: DisplayLine[], setMaxLines = 4): DisplaySet[
 
 export const fetchMapData = async (mapId: string | number): Promise<ParseResult> => {
   // 1. キャッシュをチェック
+  /*
   try {
     const cached = await getCachedMapData(mapId);
     if (cached && (cached as any).displaySets) {
@@ -304,6 +305,7 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
   } catch (err) {
     console.warn('Failed to fetch from cache:', err);
   }
+  */
 
   const response = await fetch(`https://ytyping.net/api/maps/${mapId}/json`);
   if (!response.ok) {
@@ -318,10 +320,16 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
       lyrics: line.lyrics,
       words: await splitYomi(line.lyrics, line.word),
       rawWord: line.word,
-      isEnd: (line.lyrics === 'end' && line.word === '') || line.lyrics === 'end',
+      isEnd: (index === data.length - 1 && line.lyrics === 'end' && (!line.word || line.word.trim() === '')),
       absLineIdx: index
     }))
   );
+
+  console.log('[api.ts] fetchMapData', {
+    totalLines: parsedLines.length,
+    endLineIdx: parsedLines.findIndex(l => l.isEnd),
+    firstFewLines: parsedLines.slice(0, 3)
+  });
 
   // メタデータから動画IDを取得 (https://ytyping.net/api/maps/${mapId})
   let videoId = undefined;
@@ -366,6 +374,13 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
     title: title ? String(title) : undefined,
     artist: artist ? String(artist) : undefined
   };
+
+  console.log('[api.ts] Final Check', {
+    totalParsedLines: parsedLines.length,
+    displaySetsCount: displaySets.length,
+    lastPlayableAbsIdx: displaySets.length > 0 ? displaySets[displaySets.length - 1].lines.slice(-1)[0].absLineIdx : -1,
+    lastLyrics: parsedLines.slice(-5).map(l => l.lyrics)
+  });
 
   // キャッシュに保存
   try {

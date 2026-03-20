@@ -429,11 +429,11 @@ h3,
 
 .center-column .lyrics-area .lyric-line {
   padding-left: 12px !important;
-  border-left: 4px solid #f48 !important;
+  border-left-width: 4px !important;
+  border-left-style: solid !important;
   margin: 4px 0 !important;
   font-size: 20px !important;
   font-weight: 700 !important;
-  color: #e0195a !important;
   line-height: 1.6 !important;
 }
 
