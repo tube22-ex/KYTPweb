@@ -3,7 +3,20 @@ import { MapLoader } from './components/MapLoader';
 import { TypingArea } from './components/TypingArea';
 import { PlayerLane } from './components/PlayerLane';
 import { ParseResult, fetchMapData } from './services/api';
-import { joinRoom, subscribeToRoom, RoomState, setRoomMapId, PLAYER_COLORS, getRoomState, resetRoom, determineHostId, deleteRoomIfEmpty, subscribeToAllRooms, leaveRoom as cleanupPlayer, updatePlayerHeartbeat } from './services/sync';
+import {
+  joinRoom,
+  subscribeToRoom,
+  RoomState,
+  setRoomMapId,
+  SlotId,
+  getRoomState,
+  resetRoom,
+  determineHostId,
+  deleteRoomIfEmpty,
+  subscribeToAllRooms,
+  leaveRoom as cleanupPlayer,
+  updatePlayerHeartbeat,
+} from './services/sync';
 
 interface PlayedHistoryItem {
   id: string;
@@ -15,11 +28,18 @@ interface PlayedHistoryItem {
 const BASE_WIDTH = 1280;
 const BASE_HEIGHT = 850;
 
+// ★ ユーザー入力のルームIDにプレフィックスを付けてFirebase用IDに変換
+const toFirebaseRoomId = (rawId: string) => `room-${rawId}`;
+// ★ 表示用に room- を除去
+const toDisplayRoomId = (firebaseId: string) => firebaseId.replace(/^room-/, '');
+
 export default function App() {
   const rootRef = useRef<HTMLDivElement>(null);
   const [mapData, setMapData] = useState<ParseResult | null>(null);
 
   // ルーム管理ステート
+  // roomInputはユーザーが入力する表示用ID、roomIdはFirebase内部用ID（room-プレフィックス付き）
+  const [roomInput, setRoomInput] = useState('');
   const [roomId, setRoomId] = useState('');
   const [playerName, setPlayerName] = useState(() => 'User_' + Math.random().toString(36).substring(2, 6));
   const [playerId] = useState(() => {
@@ -33,43 +53,40 @@ export default function App() {
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [allRooms, setAllRooms] = useState<Record<string, RoomState> | null>(null);
 
+  const [mySlotId, setMySlotId] = useState<SlotId | null>(null);
+
   // 表示トグル
   const [showHistory, setShowHistory] = useState(false);
 
-  // 現在の再生/タイピングブロック (TypingArea から同期)
+  // 現在の再生/タイピングブロック
   const [activeBlockIdx, setActiveBlockIdx] = useState(0);
 
   // フォント設定
   const [selectedFont, setSelectedFont] = useState("'M PLUS Rounded 1c', sans-serif");
-  
+
   // 画面スケーリング処理
   useEffect(() => {
     const updateScale = () => {
       if (!rootRef.current) return;
-      
       const scaleX = window.innerWidth / BASE_WIDTH;
       const scaleY = window.innerHeight / BASE_HEIGHT;
       const scale = Math.min(scaleX, scaleY);
-      
       rootRef.current.style.transform = `scale(${scale})`;
       rootRef.current.style.transformOrigin = 'top left';
       rootRef.current.style.width = `${BASE_WIDTH}px`;
       rootRef.current.style.height = `${BASE_HEIGHT}px`;
-      
-      // ボディサイズを調整してスクロールバーを防止しつつ中央寄せ
       document.body.style.width = `${BASE_WIDTH * scale}px`;
       document.body.style.height = `${BASE_HEIGHT * scale}px`;
       document.body.style.margin = '0 auto';
       document.body.style.overflow = 'hidden';
       document.body.style.position = 'relative';
     };
-
     updateScale();
     window.addEventListener('resize', updateScale);
     return () => window.removeEventListener('resize', updateScale);
   }, []);
 
-  // 音量管理 (localStorage保存、Keyboard操作)
+  // 音量管理
   const [volume, setVolume] = useState(() => {
     const saved = localStorage.getItem('kytp_volume');
     return saved ? Number(saved) : 50;
@@ -115,9 +132,12 @@ export default function App() {
     localStorage.setItem('kytp_history', JSON.stringify(newHistory));
   };
 
-  const handleJoin = async (targetRoomId: string = roomId) => {
-    const idToJoin = targetRoomId.trim() || roomId.trim();
-    if (!idToJoin || !playerName.trim()) return;
+  // ★ rawIdはユーザー入力値（表示用）、idToJoinはFirebase用（room-付き）
+  const handleJoin = async (rawId: string = roomInput) => {
+    const trimmed = rawId.trim();
+    if (!trimmed || !playerName.trim()) return;
+    const idToJoin = toFirebaseRoomId(trimmed);
+
     try {
       await deleteRoomIfEmpty(idToJoin);
       const currentState = await getRoomState(idToJoin);
@@ -125,17 +145,21 @@ export default function App() {
         alert('プレイ中の部屋には入室できません。');
         return;
       }
-      const existingCount = Object.keys(currentState?.players ?? {}).length;
-      const color = PLAYER_COLORS[existingCount % PLAYER_COLORS.length];
-      await joinRoom(idToJoin, playerId, playerName, color);
+
+      const { slotId } = await joinRoom(idToJoin, playerId, playerName);
+      setMySlotId(slotId);
       setRoomId(idToJoin);
       setInRoom(true);
       subscribeToRoom(idToJoin, (state) => {
         setRoomState(state);
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to join room:', err);
-      alert('入室に失敗しました。');
+      if (err.message === 'ROOM_FULL') {
+        alert('この部屋は満員です（最大8名）。');
+      } else {
+        alert('入室に失敗しました。');
+      }
     }
   };
 
@@ -185,8 +209,10 @@ export default function App() {
             }
             pIds.forEach(pid => {
               const p = r.players[pid];
-              if (now - (p.lastSeen || 0) > 60000) {
-                cleanupPlayer(rid, pid);
+              // 判定時間を60秒から180秒（3分）に延長（ブラウザのスロットリング対策）
+              if (now - (p.lastSeen || 0) > 180000) {
+                const ghostSlotId = (p as any).slotId as SlotId | undefined;
+                cleanupPlayer(rid, pid, ghostSlotId ?? null);
               }
             });
           });
@@ -204,6 +230,20 @@ export default function App() {
       return () => clearInterval(interval);
     }
   }, [inRoom, roomId, playerId]);
+
+  // ★ 自分が部屋にいるはずなのにリストから消えている（離席判定された）場合、強制退出させる
+  useEffect(() => {
+    if (inRoom && roomState && playerId && roomState.players && !roomState.players[playerId]) {
+      console.warn('Player missing from room state, forcing local exit');
+      setInRoom(false);
+      setRoomId('');
+      setMapData(null);
+      setMySlotId(null);
+      alert('長時間操作がなかったため、自動的に退室しました。');
+    }
+  }, [inRoom, roomState, playerId]);
+
+  const isHost = determineHostId(roomState?.players) === playerId;
 
   const HistoryCard = ({ item }: { item: PlayedHistoryItem }) => (
     <button
@@ -224,7 +264,7 @@ export default function App() {
     <div
       ref={rootRef}
       className="flex flex-col items-stretch bg-gradient-to-br from-[#fff5f7] via-white to-[#f5f3ff] text-zinc-800 selection:bg-rose-200"
-      style={{ 
+      style={{
         fontFamily: selectedFont,
         width: `${BASE_WIDTH}px`,
         height: `${BASE_HEIGHT}px`,
@@ -254,7 +294,7 @@ export default function App() {
             style={{ flexShrink: 0 }}>
             <div className="w-[130px] flex flex-col h-full pr-1">
               <div className="flex items-center justify-between mb-3 ml-1 flex-shrink-0">
-                <div className="flex items-center gap-1.5 ">
+                <div className="flex items-center gap-1.5">
                   <div className="w-1.5 h-3 bg-rose-400 rounded-full"></div>
                   <h2 className="text-[10px] font-black text-rose-300 uppercase tracking-[0.2em] italic">History</h2>
                 </div>
@@ -284,14 +324,14 @@ export default function App() {
                       </select>
                     </div>
                     <div className="flex flex-col gap-1.5 mt-2">
-                       <div className="flex justify-between items-center">
+                      <div className="flex justify-between items-center">
                         <label className="text-[9px] font-black text-rose-300 uppercase italic tracking-tighter">Volume</label>
                         <span className="text-[10px] font-black text-zinc-400 tabular-nums">{volume}%</span>
                       </div>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="100" 
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
                         value={volume}
                         onChange={(e) => setVolume(Number(e.target.value))}
                         className="w-full h-1.5 bg-rose-100 rounded-lg appearance-none cursor-pointer accent-rose-400"
@@ -310,20 +350,24 @@ export default function App() {
           </button>
         </div>
 
-        {/* 中央カラム: プレイヤー (860px) */}
+        {/* 中央カラム */}
         <main className="center-column animate-in fade-in slide-in-from-bottom-4 duration-500 shrink-0">
           {!mapData && roomState && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-[#fff0f5] border-b-2 border-rose-400 flex-shrink-0 animate-in fade-in slide-in-from-top-1 duration-300">
               {/* 自分 */}
               <div className="flex items-center gap-2 pr-3 border-r border-rose-100">
-                <div 
-                  className="w-3.5 h-3.5 rounded-full shadow-sm border border-white" 
-                  style={{ background: roomState.players[playerId]?.color || '#ccc' }} 
+                <div
+                  className="w-3.5 h-3.5 rounded-full shadow-sm border border-white"
+                  style={{ background: roomState.players[playerId]?.color || '#ccc' }}
                 />
                 <span className="text-[14px] font-black text-zinc-700 italic tracking-tighter uppercase">{playerName}</span>
                 <span className="text-[9px] font-black text-rose-300 bg-white px-1 rounded-sm border border-rose-50 shadow-sm leading-none py-0.5">YOU</span>
+                {/* ★ ホストバッジ */}
+                {isHost && (
+                  <span className="text-[9px] font-black text-amber-400 bg-white px-1 rounded-sm border border-amber-100 shadow-sm leading-none py-0.5">★ HOST</span>
+                )}
               </div>
-              
+
               {/* 他のプレイヤー */}
               <div className="flex items-center gap-4 pl-1">
                 {Object.values(roomState.players).filter(p => p.id !== playerId).map(p => (
@@ -335,7 +379,7 @@ export default function App() {
               </div>
             </div>
           )}
-          
+
           <div className="flex items-center gap-1.5 mb-3 ml-1 flex-shrink-0 mt-2">
             <div className="w-1.5 h-3 bg-rose-400 rounded-full"></div>
             <h2 className="text-[10px] font-black text-rose-300 uppercase tracking-[0.2em] italic">Player</h2>
@@ -352,8 +396,8 @@ export default function App() {
                   <input
                     type="text"
                     placeholder="ルームID"
-                    value={roomId}
-                    onChange={e => setRoomId(e.target.value)}
+                    value={roomInput}
+                    onChange={e => setRoomInput(e.target.value)}
                     className="px-4 py-3 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black text-zinc-700 shadow-inner text-sm"
                   />
                   <input
@@ -386,12 +430,15 @@ export default function App() {
                           return (
                             <button
                               key={rid}
-                              onClick={() => setRoomId(rid)}
-                              onDoubleClick={() => !isPlaying && handleJoin(rid)}
+                              // ★ クリックで入力欄に表示用IDをセット
+                              onClick={() => setRoomInput(toDisplayRoomId(rid))}
+                              // ★ ダブルクリックで直接入室
+                              onDoubleClick={() => !isPlaying && handleJoin(toDisplayRoomId(rid))}
                               className="group flex items-center justify-between p-3 bg-white border border-zinc-100 hover:border-rose-200 hover:bg-rose-50/30 transition-all text-left"
                             >
                               <div className="flex flex-col">
-                                <span className="text-xs font-black text-zinc-600 group-hover:text-rose-500"># {rid}</span>
+                                {/* ★ 表示はroom-を除去 */}
+                                <span className="text-xs font-black text-zinc-600 group-hover:text-rose-500"># {toDisplayRoomId(rid)}</span>
                                 <span className="text-[9px] font-bold text-zinc-400">
                                   {isPlaying ? '🎮 プレイ中' : '⏳ 待機中'}
                                 </span>
@@ -415,13 +462,15 @@ export default function App() {
                       <PlayerLane roomState={roomState} playerId={playerId} />
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                      <MapLoader onLoad={handleMapLoad} />
+                      {/* ★ isHostを渡す */}
+                      <MapLoader onLoad={handleMapLoad} isHost={isHost} />
                     </div>
                   </div>
                 ) : (
                   <div className="w-full h-full transform transition-all animate-in fade-in zoom-in-95 duration-1000 relative">
                     <div className="absolute top-2 left-2 z-50 bg-white/80 backdrop-blur-sm px-3 py-1 flex items-center gap-2 border border-zinc-100 shadow-sm pointer-events-none">
-                      <span className="font-black text-[10px] text-rose-400 tabular-nums"># {roomId}</span>
+                      {/* ★ 表示はroom-を除去 */}
+                      <span className="font-black text-[10px] text-rose-400 tabular-nums"># {toDisplayRoomId(roomId)}</span>
                       <div className="w-[1px] h-2 bg-zinc-200"></div>
                       <span className="font-black text-[10px] text-zinc-500 uppercase italic">{playerName}</span>
                     </div>
@@ -455,7 +504,6 @@ export default function App() {
               alignSelf: 'stretch',
               overflow: 'hidden',
             }}>
-            {/* 1. 全演奏ブロックのガイドリスト */}
             <div className="guide-blocks custom-scrollbar">
               <div className="flex items-center gap-1.5 mb-3 ml-1 flex-shrink-0">
                 <div className="w-1.5 h-3 bg-purple-400 rounded-full"></div>

@@ -18,9 +18,14 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
       case '#2B86C5': return '青';
       case '#3DFC64': return '緑';
       case '#FBD72B': return '黄';
+      case '#A855F7': return '紫';
+      case '#FF8C00': return '橙';
+      case '#00BCD4': return '水';
+      case '#FF69B4': return '桃';
       default: return '他';
     }
   };
+
 
   return (
     <div className="w-full relative">

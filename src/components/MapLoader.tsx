@@ -4,9 +4,10 @@ import { MapCacheList } from './MapCacheList';
 
 interface MapLoaderProps {
   onLoad: (data: ParseResult, mapId: string) => void;
+  isHost: boolean; // ★ 追加
 }
 
-export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
+export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad, isHost }) => {
   const [mapId, setMapId] = useState<string>('1');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +70,20 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
     }
   };
 
+
+  if (!isHost) {
+    return (
+      <div className="bg-white border-4 border-white shadow-[0_10px_30px_rgba(255,133,161,0.05)] rounded-none w-full h-full flex flex-col items-center justify-center gap-4 bubble-bg">
+        <div className="w-10 h-10 border-4 border-rose-100 border-t-rose-400 rounded-full animate-spin" />
+        <div className="text-sm font-black text-rose-300 uppercase tracking-widest italic animate-pulse">
+          ホストが曲を選択中...
+        </div>
+        <div className="text-[10px] font-bold text-zinc-300">
+          しばらくお待ちください
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="bg-white border-4 border-white shadow-[0_10px_30px_rgba(255,133,161,0.05)] rounded-none w-full h-full flex flex-col relative overflow-hidden bubble-bg input-section">
 
@@ -140,7 +155,7 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad }) => {
         </div>
       )}
 
-      <MapCacheList onSelect={onLoad} />
+      <MapCacheList onSelect={onLoad} isHost={isHost} />
     </div>
   );
 };

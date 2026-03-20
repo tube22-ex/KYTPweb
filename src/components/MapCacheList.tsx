@@ -4,9 +4,10 @@ import { ParseResult } from '../services/api';
 
 interface MapCacheListProps {
   onSelect: (data: ParseResult, mapId: string) => void;
+  isHost: boolean; // ★ 追加
 }
 
-export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect }) => {
+export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, isHost }) => {
   const [cachedMaps, setCachedMaps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -86,8 +87,9 @@ export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect }) => {
           return (
             <button
               key={map.id}
-              onClick={() => onSelect(map as ParseResult, map.id)}
-              className="chart-card"
+              onClick={() => isHost && onSelect(map as ParseResult, map.id)} // ★ ホストのみ選択可
+              disabled={!isHost} // ★ 追加
+              className={`chart-card ${!isHost ? 'opacity-40 cursor-not-allowed' : ''}`}
             >
               {/* Square Thumbnail Area */}
               <div className="w-full aspect-square bg-zinc-100 overflow-hidden relative">

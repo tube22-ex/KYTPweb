@@ -80,7 +80,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
   useEffect(() => {
     if (playerRef.current && typeof playerRef.current.setVolume === 'function') {
-      try { playerRef.current.setVolume(volume); } catch (e) {}
+      try { playerRef.current.setVolume(volume); } catch (e) { }
     }
   }, [volume, playerState]);
 
@@ -98,7 +98,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           onReady: (e: any) => {
             if (instanceIdRef.current !== curId) { e.target.destroy(); return; }
             playerRef.current = e.target;
-            try { e.target.setVolume(volume); } catch (err) {}
+            try { e.target.setVolume(volume); } catch (err) { }
             setVideoDuration(e.target.getDuration());
             const start = roomState?.startTime;
             if (start) getServerTimeOffset().then(off => {
@@ -437,14 +437,14 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
   useEffect(() => {
     if (!mapData.displaySets || mapData.displaySets.length === 0 || !isStarted || isGameOver) return;
-    
+
     // 表示（入力）される最後のセットの、最後の行の絶対インデックスを特定
     const lastSet = mapData.displaySets[mapData.displaySets.length - 1];
     const lastLineInAll = lastSet.lines[lastSet.lines.length - 1];
     const lastAbsIdx = lastLineInAll?.absLineIdx ?? -1;
-    
+
     const gl = roomState?.globalLineIdx ?? 0;
-    
+
     // 詳細なデバッグログ
     if (gl % 5 === 0 || (lastAbsIdx !== -1 && gl >= lastAbsIdx - 2)) {
       console.log('[GameOverCheck DEBUG]', {
@@ -473,11 +473,11 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   return (
     <div className='flex flex-col items-center w-full max-w-none mx-auto p-0 h-full overflow-hidden'>
       <div className="w-full border-4 border-white rounded-none bg-white/5 backdrop-blur-sm p-0 flex flex-col h-full overflow-hidden">
-        
+
         {/* ステージ：PlayerLane と スタートオーバーレイを包含 */}
         <div className="w-full bg-white/10 border-b-2 border-white/20 flex-shrink-0 stage-container" style={{ position: 'relative' }}>
           <PlayerLane roomState={roomState} playerId={playerId} />
-          
+
           {/* スタート待機オーバーレイ（ステージ内のみ） */}
           {!isGameOver && !isStarted && (
             <div style={{
@@ -551,10 +551,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 const linePlayerColor = roomState?.players?.[linePlayerId]?.color || '#e0195a';
 
                 return (
-                  <div 
-                    key={idx} 
+                  <div
+                    key={idx}
                     className={`lyric-line ${isLineActive ? 'active' : ''}`}
-                    style={{ 
+                    style={{
                       color: linePlayerColor,
                       borderLeftColor: linePlayerColor,
                       backgroundColor: isLineActive ? `${linePlayerColor}15` : 'transparent'
@@ -615,9 +615,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
               })}
             </div>
 
-            <div 
+            <div
               className="w-full flex flex-col relative overflow-hidden border-b-4 border-white/10 target-bar"
-              style={{ backgroundColor: roomState?.players?.[activeLinePlayerId]?.color || '#fb7185' }}
+              style={{ backgroundColor: roomState?.players?.[playerId]?.color || '#fb7185' }}
+
             >
               {isStarted && !isGameOver && (() => {
                 const myColor = roomState?.players?.[playerId]?.color ?? '#ffffff';
@@ -678,9 +679,9 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                         style={{
                           background: multiplier >= 8 ? 'linear-gradient(135deg, #ff0080, #ff6600)'
                             : multiplier >= 5 ? 'linear-gradient(135deg, #7c3aed, #e11d48)'
-                            : multiplier >= 4 ? 'linear-gradient(135deg, #0ea5e9, #7c3aed)'
-                            : multiplier >= 3 ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
-                            : 'linear-gradient(135deg, #10b981, #3b82f6)',
+                              : multiplier >= 4 ? 'linear-gradient(135deg, #0ea5e9, #7c3aed)'
+                                : multiplier >= 3 ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
+                                  : 'linear-gradient(135deg, #10b981, #3b82f6)',
                           color: 'white',
                           boxShadow: '0 0 15px rgba(255,255,255,0.4)',
                           textShadow: '0 0 8px rgba(255,255,255,0.8)',
@@ -712,13 +713,13 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 </div>
 
                 <div className="flex gap-2 mt-4">
-                    <button
-                      onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) { } onBackToMenu(); }}
-                      className="flex-1 bg-rose-400 text-white font-black rounded-none hover:bg-rose-500 shadow-sm transition-colors menu-button"
-                    >
-                      MENU
-                    </button>
-                    <button className="flex-1 bg-white border border-zinc-100 text-zinc-400 font-black rounded-none hover:bg-zinc-50 transition-colors help-button">ヘルプ</button>
+                  <button
+                    onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) { } onBackToMenu(); }}
+                    className="flex-1 bg-rose-400 text-white font-black rounded-none hover:bg-rose-500 shadow-sm transition-colors menu-button"
+                  >
+                    MENU
+                  </button>
+                  <button className="flex-1 bg-white border border-zinc-100 text-zinc-400 font-black rounded-none hover:bg-zinc-50 transition-colors help-button">ヘルプ</button>
                 </div>
               </div>
             </div>
