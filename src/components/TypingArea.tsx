@@ -435,6 +435,21 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     }
   }, [roomState?.globalLineIdx, currentSet, isStarted, isGameOver, isMe, currentLineIdx, currentLine, playerIds, getAssignedPlayerId, playerId]);
 
+  const lyricsAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (lyricsAreaRef.current) {
+      const activeLine = lyricsAreaRef.current.querySelector('.lyric-line.active');
+      if (activeLine) {
+        // コンテナのスクロール位置を、アクティブ行のオフセット位置まで移動させる
+        lyricsAreaRef.current.scrollTo({
+          top: (activeLine as HTMLElement).offsetTop,
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, [roomState?.globalLineIdx, currentBlockIdx]);
+
   useEffect(() => {
     if (!mapData.displaySets || mapData.displaySets.length === 0 || !isStarted || isGameOver) return;
 
@@ -554,7 +569,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         {!isGameOver && (
           <div className="w-full flex flex-col gap-0">
             {/* 歌詞エリアをセンターカラム内に復元 */}
-            <div className="lyrics-area" data-typing-progress={inputCount}>
+            <div className="lyrics-area scrollbar-hide" ref={lyricsAreaRef} data-typing-progress={inputCount}>
               {currentSet?.lines.map((line: any, idx: number) => {
                 const globalLineIdx = roomState?.globalLineIdx ?? 0;
                 const nowMs = currentTime * 1000;

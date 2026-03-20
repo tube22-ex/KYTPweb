@@ -425,6 +425,8 @@ h3,
   background: transparent !important;
   flex-shrink: 0 !important;
   display: block !important;
+  overflow-y: scroll !important;
+  scroll-behavior: smooth !important;
 }
 
 .center-column .lyrics-area .lyric-line {
