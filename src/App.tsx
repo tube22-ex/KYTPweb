@@ -57,13 +57,14 @@ export default function App() {
 
   // 表示トグル
   const [showHistory, setShowHistory] = useState(false);
+  const [showGuide, setShowGuide] = useState(true);
 
   // 現在の再生/タイピングブロック
   const [activeBlockIdx, setActiveBlockIdx] = useState(0);
   const guideRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (guideRef.current) {
+    if (guideRef.current && showGuide) {
       const activeBlock = guideRef.current.querySelector('.guide-block-active');
       if (activeBlock) {
         guideRef.current.scrollTo({
@@ -72,7 +73,7 @@ export default function App() {
         });
       }
     }
-  }, [activeBlockIdx]);
+  }, [activeBlockIdx, showGuide]);
 
   // フォント設定
   const [selectedFont, setSelectedFont] = useState("'M PLUS Rounded 1c', sans-serif");
@@ -145,7 +146,6 @@ export default function App() {
     localStorage.setItem('kytp_history', JSON.stringify(newHistory));
   };
 
-  // ★ rawIdはユーザー入力値（表示用）、idToJoinはFirebase用（room-付き）
   const handleJoin = async (rawId: string = roomInput) => {
     const trimmed = rawId.trim();
     if (!trimmed || !playerName.trim()) return;
@@ -222,7 +222,6 @@ export default function App() {
             }
             pIds.forEach(pid => {
               const p = r.players[pid];
-              // 判定時間を60秒から180秒（3分）に延長（ブラウザのスロットリング対策）
               if (now - (p.lastSeen || 0) > 180000) {
                 const ghostSlotId = (p as any).slotId as SlotId | undefined;
                 cleanupPlayer(rid, pid, ghostSlotId ?? null);
@@ -244,10 +243,8 @@ export default function App() {
     }
   }, [inRoom, roomId, playerId]);
 
-  // ★ 自分が部屋にいるはずなのにリストから消えている（離席判定された）場合、強制退出させる
   useEffect(() => {
     if (inRoom && roomState && playerId && roomState.players && !roomState.players[playerId]) {
-      console.warn('Player missing from room state, forcing local exit');
       setInRoom(false);
       setRoomId('');
       setMapData(null);
@@ -364,10 +361,9 @@ export default function App() {
         </div>
 
         {/* 中央カラム */}
-        <main className="center-column animate-in fade-in slide-in-from-bottom-4 duration-500 shrink-0">
+        <main className="center-column flex-1 min-w-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
           {!mapData && roomState && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-[#fff0f5] border-b-2 border-rose-400 flex-shrink-0 animate-in fade-in slide-in-from-top-1 duration-300">
-              {/* 自分 */}
               <div className="flex items-center gap-2 pr-3 border-r border-rose-100">
                 <div
                   className="w-3.5 h-3.5 rounded-full shadow-sm border border-white"
@@ -375,13 +371,10 @@ export default function App() {
                 />
                 <span className="text-[14px] font-black text-zinc-700 italic tracking-tighter uppercase">{playerName}</span>
                 <span className="text-[9px] font-black text-rose-300 bg-white px-1 rounded-sm border border-rose-50 shadow-sm leading-none py-0.5">YOU</span>
-                {/* ★ ホストバッジ */}
                 {isHost && (
                   <span className="text-[9px] font-black text-amber-400 bg-white px-1 rounded-sm border border-amber-100 shadow-sm leading-none py-0.5">★ HOST</span>
                 )}
               </div>
-
-              {/* 他のプレイヤー */}
               <div className="flex items-center gap-4 pl-1">
                 {Object.values(roomState.players).filter(p => p.id !== playerId).map(p => (
                   <div key={p.id} className="flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity">
@@ -427,13 +420,9 @@ export default function App() {
                     入室
                   </button>
                   <div className="mt-8 pt-6 border-t border-zinc-100">
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className="w-1 h-3 bg-purple-400 rounded-full"></div>
-                      <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest italic">稼働中の部屋</h3>
-                    </div>
                     {!allRooms || Object.keys(allRooms).length === 0 ? (
                       <div className="text-[10px] text-zinc-300 italic text-center py-4 bg-zinc-50 border border-dashed border-zinc-200">
-                        現在稼働中の部屋はありません
+                          現在稼働中の部屋はありません
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
@@ -443,14 +432,11 @@ export default function App() {
                           return (
                             <button
                               key={rid}
-                              // ★ クリックで入力欄に表示用IDをセット
                               onClick={() => setRoomInput(toDisplayRoomId(rid))}
-                              // ★ ダブルクリックで直接入室
                               onDoubleClick={() => !isPlaying && handleJoin(toDisplayRoomId(rid))}
                               className="group flex items-center justify-between p-3 bg-white border border-zinc-100 hover:border-rose-200 hover:bg-rose-50/30 transition-all text-left"
                             >
                               <div className="flex flex-col">
-                                {/* ★ 表示はroom-を除去 */}
                                 <span className="text-xs font-black text-zinc-600 group-hover:text-rose-500"># {toDisplayRoomId(rid)}</span>
                                 <span className="text-[9px] font-bold text-zinc-400">
                                   {isPlaying ? '🎮 プレイ中' : '⏳ 待機中'}
@@ -475,14 +461,12 @@ export default function App() {
                       <PlayerLane roomState={roomState} playerId={playerId} />
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                      {/* ★ isHostを渡す */}
                       <MapLoader onLoad={handleMapLoad} isHost={isHost} />
                     </div>
                   </div>
                 ) : (
                   <div className="w-full h-full transform transition-all animate-in fade-in zoom-in-95 duration-1000 relative">
                     <div className="absolute top-2 left-2 z-50 bg-white/80 backdrop-blur-sm px-3 py-1 flex items-center gap-2 border border-zinc-100 shadow-sm pointer-events-none">
-                      {/* ★ 表示はroom-を除去 */}
                       <span className="font-black text-[10px] text-rose-400 tabular-nums"># {toDisplayRoomId(roomId)}</span>
                       <div className="w-[1px] h-2 bg-zinc-200"></div>
                       <span className="font-black text-[10px] text-zinc-500 uppercase italic">{playerName}</span>
@@ -506,60 +490,67 @@ export default function App() {
 
         {/* 右カラム: 歌詞リスト (290px) */}
         {!(!mapData && roomState) && (
-          <aside className="right-column guide-column"
-            style={{
-              width: '290px',
-              minWidth: '290px',
-              maxWidth: '290px',
-              flexShrink: 0,
-              marginRight: 0,
-              paddingRight: 0,
-              alignSelf: 'stretch',
-              overflow: 'hidden',
-            }}>
-            <div className="guide-blocks custom-scrollbar h-full overflow-y-auto" ref={guideRef}>
-              <div className="flex items-center gap-1.5 mb-3 ml-1 flex-shrink-0">
-                <div className="w-1.5 h-3 bg-purple-400 rounded-full"></div>
-                <h2 className="text-[10px] font-black text-purple-300 uppercase tracking-[0.2em] italic">Guide</h2>
-              </div>
-              <div className="flex flex-col gap-2">
-                {mapData?.displaySets.map((set, idx) => (
-                  <button
-                    key={idx}
-                    className={`group relative p-3 border-l-4 transition-all text-left ${activeBlockIdx === idx
-                      ? 'bg-rose-50 border-rose-400 shadow-md translate-x-1 guide-block-active'
-                      : 'bg-white border-zinc-100 hover:bg-zinc-50 hover:border-zinc-300'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className={`text-[10px] font-black italic ${activeBlockIdx === idx ? 'text-rose-400' : 'text-zinc-300'}`}>BLOCK {String(idx + 1).padStart(2, '0')}</span>
-                      <span className="text-[9px] font-bold text-zinc-300 tabular-nums">
-                        {Math.floor(set.timeMs / 1000 / 60)}:{String(Math.floor((set.timeMs / 1000) % 60)).padStart(2, '0')}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-1.5 mt-2">
-                      {set.lines.slice(0, 4).map((line: any, lIdx: number) => (
-                        <div 
-                          key={lIdx} 
-                          className={`text-[11px] font-bold leading-tight pb-1 ${
-                            activeBlockIdx === idx ? 'text-rose-900' : 'text-zinc-500'
-                          } ${lIdx < Math.min(set.lines.length, 4) - 1 ? 'border-b border-zinc-100/50' : ''}`}
-                        >
-                          {line.chunks.map((c: any) => c.text).join('　') || '...'}
-                        </div>
-                      ))}
-                      {set.lines.length > 4 && (
-                        <div className="text-[9px] font-bold text-zinc-300 italic">... and {set.lines.length - 4} more</div>
+          <div className={`right-column guide-column relative h-full flex flex-row items-start ${showGuide ? 'has-guide' : ''}`} style={{ flexShrink: 0 }}>
+            <button
+              onClick={() => setShowGuide(!showGuide)}
+              className="guide-toggle flex h-12 w-6 bg-white border border-rose-100 border-r-0 items-center justify-center text-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all z-30 shadow-sm mt-4 rounded-l-md"
+              title={showGuide ? "ガイドを閉じる" : "ガイドを開く"}
+            >
+              <span className="text-[10px] tabular-nums">{showGuide ? '▶' : '◀'}</span>
+            </button>
+            <aside className={`relative flex flex-col h-full transition-all duration-200 ease-out overflow-hidden ${showGuide ? 'open' : ''}`}
+              style={{
+                width: showGuide ? '290px' : '0px',
+                minWidth: showGuide ? '290px' : '0px',
+                maxWidth: showGuide ? '290px' : '0px',
+                flexShrink: 0,
+                alignSelf: 'stretch',
+                overflow: 'hidden',
+                borderLeft: showGuide ? '2px solid #fee' : 'none',
+              }}>
+              <div className="guide-blocks custom-scrollbar h-full overflow-y-auto" ref={guideRef} style={{ width: '290px' }}>
+                <div className="flex items-center gap-1.5 mb-3 ml-1 flex-shrink-0">
+                  <div className="w-1.5 h-3 bg-purple-400 rounded-full"></div>
+                  <h2 className="text-[10px] font-black text-purple-300 uppercase tracking-[0.2em] italic">Guide</h2>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {mapData?.displaySets.map((set, idx) => (
+                    <button
+                      key={idx}
+                      className={`group relative p-3 border-l-4 transition-all text-left ${activeBlockIdx === idx
+                        ? 'bg-rose-50 border-rose-400 shadow-md translate-x-1 guide-block-active'
+                        : 'bg-white border-zinc-100 hover:bg-zinc-50 hover:border-zinc-300'
+                        }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`text-[10px] font-black italic ${activeBlockIdx === idx ? 'text-rose-400' : 'text-zinc-300'}`}>BLOCK {String(idx + 1).padStart(2, '0')}</span>
+                        <span className="text-[9px] font-bold text-zinc-300 tabular-nums">
+                          {Math.floor(set.timeMs / 1000 / 60)}:{String(Math.floor((set.timeMs / 1000) % 60)).padStart(2, '0')}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-1.5 mt-2">
+                        {set.lines.slice(0, 4).map((line: any, lIdx: number) => (
+                          <div
+                            key={lIdx}
+                            className={`text-[11px] font-bold leading-tight pb-1 ${activeBlockIdx === idx ? 'text-rose-900' : 'text-zinc-500'
+                              } ${lIdx < Math.min(set.lines.length, 4) - 1 ? 'border-b border-zinc-100/50' : ''}`}
+                          >
+                            {line.chunks.map((c: any) => c.text).join('　') || '...'}
+                          </div>
+                        ))}
+                        {set.lines.length > 4 && (
+                          <div className="text-[9px] font-bold text-zinc-300 italic">... and {set.lines.length - 4} more</div>
+                        )}
+                      </div>
+                      {activeBlockIdx === idx && (
+                        <div className="absolute top-0 right-1 h-full w-1 bg-rose-400 rounded-full"></div>
                       )}
-                    </div>
-                    {activeBlockIdx === idx && (
-                      <div className="absolute top-0 right-1 h-full w-1 bg-rose-400 rounded-full"></div>
-                    )}
-                  </button>
-                ))}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          </aside>
+            </aside>
+          </div>
         )}
       </div>
 

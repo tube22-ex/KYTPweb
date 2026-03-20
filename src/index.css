@@ -288,14 +288,10 @@ h3,
 }
 
 .right-column, .guide-column {
-  width: 290px !important;
-  min-width: 290px !important;
-  max-width: 290px !important;
   height: 780px !important;
   display: flex !important;
   flex-direction: column !important;
-  overflow: hidden !important;
-  border-left: 2px solid #fee !important;
+  position: relative;
 }
 
 /* 歌詞エリア（GUIDE上部へ移動） */
