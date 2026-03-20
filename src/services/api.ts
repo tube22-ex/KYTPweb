@@ -1,6 +1,5 @@
 import kuromoji from 'kuromoji';
-// import { _getCachedMapData, saveMapDataToCache } from './sync';  後で使う可能性あるので残す
-
+import { saveMapDataToCache } from './sync';
 // ============================================
 // Kuromoji Dict Load Fix (Vite/Browser)
 // ============================================
