@@ -54,7 +54,7 @@ export default function App() {
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [allRooms, setAllRooms] = useState<Record<string, RoomState> | null>(null);
 
-  const [mySlotId, setMySlotId] = useState<SlotId | null>(null);
+  const [_mySlotId, setMySlotId] = useState<SlotId | null>(null);
 
   // 表示トグル
   const [showHistory, setShowHistory] = useState(false);
@@ -432,7 +432,7 @@ export default function App() {
                   <div className="mt-8 pt-6 border-t border-zinc-100">
                     {!allRooms || Object.keys(allRooms).length === 0 ? (
                       <div className="text-[10px] text-zinc-300 italic text-center py-4 bg-zinc-50 border border-dashed border-zinc-200">
-                          現在稼働中の部屋はありません
+                        現在稼働中の部屋はありません
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
@@ -471,9 +471,9 @@ export default function App() {
                       <PlayerLane roomState={roomState} playerId={playerId} />
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                      <MapLoader 
-                        onLoad={handleMapLoad} 
-                        isHost={isHost} 
+                      <MapLoader
+                        onLoad={handleMapLoad}
+                        isHost={isHost}
                         roomId={roomId}
                         playerName={playerName}
                         roomState={roomState}
@@ -572,10 +572,10 @@ export default function App() {
 
       {showEditor && (
         <div className="absolute inset-0 z-[100] bg-black/20 backdrop-blur-md flex items-center justify-center p-8">
-          <MapEditor 
-            onClose={() => setShowEditor(false)} 
+          <MapEditor
+            onClose={() => setShowEditor(false)}
             onSaved={() => {
-               // 必要に応じてリフレッシュ処理を追加
+              // 必要に応じてリフレッシュ処理を追加
             }}
           />
         </div>

@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  ParseResult, 
-  ParsedLine, 
-  splitYomi, 
-  toChunks, 
-  buildDisplayLines, 
-  buildDisplaySets 
+import {
+  ParseResult,
+  ParsedLine,
+  splitYomi,
+  toChunks,
+  buildDisplayLines,
+  buildDisplaySets
 } from '../services/api';
 import { saveMapDataToCache } from '../services/sync';
 
@@ -21,7 +21,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved }) => {
   const [rawText, setRawText] = useState('');
   const [isParsing, setIsParsing] = useState(false);
   const [previewData, setPreviewData] = useState<ParseResult | null>(null);
-  const [localMapId, setLocalMapId] = useState(() => `local-${Math.random().toString(36).substring(2, 8)}`);
+  const [localMapId, _setLocalMapId] = useState(() => `local-${Math.random().toString(36).substring(2, 8)}`);
 
   const playerRef = useRef<any>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -46,7 +46,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved }) => {
       document.head.appendChild(tag);
       (window as any).onYouTubeIframeAPIReady = init;
     } else init();
-    
+
     const interval = setInterval(() => {
       if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
         setCurrentTime(playerRef.current.getCurrentTime());
@@ -60,7 +60,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved }) => {
     try {
       const lines: ParsedLine[] = [];
       const rawLines = rawText.split('\n').filter(l => l.trim());
-      
+
       for (let i = 0; i < rawLines.length; i++) {
         const lineStr = rawLines[i].trim();
         // Format: [TIME_MS] LYRICS / WORD
@@ -141,9 +141,9 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved }) => {
       const lines = prev.split('\n');
       const lastLine = lines[lines.length - 1];
       if (lastLine && lastLine.trim() && !lastLine.startsWith('[')) {
-         // もし最後がテキストだけなら時間を先頭に補完する
-         lines[lines.length - 1] = `[${timeMs}] ` + lastLine.trim();
-         return lines.join('\n');
+        // もし最後がテキストだけなら時間を先頭に補完する
+        lines[lines.length - 1] = `[${timeMs}] ` + lastLine.trim();
+        return lines.join('\n');
       }
       return prev + (prev.endsWith('\n') || prev === '' ? '' : '\n') + `[${timeMs}] Lyric / yomi`;
     });
@@ -196,8 +196,8 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved }) => {
               <label className="text-[10px] font-black text-rose-300 uppercase italic">Raw Line Data</label>
               <p className="text-[9px] text-zinc-400 font-bold">Format: [TimeMS] Lyrics / Yomi</p>
             </div>
-            <textarea 
-              value={rawText} 
+            <textarea
+              value={rawText}
               onChange={e => setRawText(e.target.value)}
               className="flex-1 bg-zinc-900 text-green-400 p-4 font-mono text-[11px] leading-relaxed border-2 border-zinc-800 focus:border-rose-500 outline-none shadow-inner"
               spellCheck={false}
@@ -212,7 +212,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved }) => {
             <div id="editor-player" className="w-full h-full" />
             <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-sm p-2 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
               <span className="text-[10px] font-mono text-white tabular-nums">{Math.floor(currentTime)}s</span>
-              <button 
+              <button
                 onClick={handleRecordTime}
                 className="bg-rose-500 hover:bg-rose-400 text-white text-[9px] font-black px-3 py-1 rounded-sm shadow-lg active:scale-95 transition-all"
               >
@@ -222,15 +222,15 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved }) => {
           </div>
 
           <div className="flex gap-2">
-            <button 
-              onClick={handleParse} 
+            <button
+              onClick={handleParse}
               disabled={isParsing || !rawText}
               className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-900 text-white font-black text-xs uppercase italic tracking-widest shadow-lg active:scale-95 disabled:opacity-50"
             >
               {isParsing ? 'Parsing...' : 'Parse & Preview'}
             </button>
-            <button 
-              onClick={handleSave} 
+            <button
+              onClick={handleSave}
               disabled={!previewData}
               className="flex-1 py-3 bg-rose-400 hover:bg-rose-500 text-white font-black text-xs uppercase italic tracking-widest shadow-lg active:scale-95 disabled:opacity-50"
             >
@@ -239,23 +239,23 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved }) => {
           </div>
 
           <div className="flex-1 bg-zinc-50 border-2 border-zinc-100 overflow-y-auto custom-scrollbar p-3">
-             <label className="text-[10px] font-black text-zinc-300 uppercase italic mb-2 block">Parsed Structure Preview</label>
-             {previewData ? (
-               <div className="flex flex-col gap-3">
-                 {previewData.displaySets.map((set, sid) => (
-                   <div key={sid} className="border-l-2 border-rose-200 pl-3">
-                     <span className="text-[9px] font-bold text-rose-300 tabular-nums">BLOCK {sid+1} ({set.timeMs}ms)</span>
-                     {set.lines.map((l, lid) => (
-                       <div key={lid} className="text-[11px] font-bold text-zinc-600">
-                         {l.chunks.map(c => c.text).join(' ')}
-                       </div>
-                     ))}
-                   </div>
-                 ))}
-               </div>
-             ) : (
-               <div className="flex items-center justify-center h-full text-zinc-300 text-[10px] font-bold italic">No preview data</div>
-             )}
+            <label className="text-[10px] font-black text-zinc-300 uppercase italic mb-2 block">Parsed Structure Preview</label>
+            {previewData ? (
+              <div className="flex flex-col gap-3">
+                {previewData.displaySets.map((set, sid) => (
+                  <div key={sid} className="border-l-2 border-rose-200 pl-3">
+                    <span className="text-[9px] font-bold text-rose-300 tabular-nums">BLOCK {sid + 1} ({set.timeMs}ms)</span>
+                    {set.lines.map((l, lid) => (
+                      <div key={lid} className="text-[11px] font-bold text-zinc-600">
+                        {l.chunks.map(c => c.text).join(' ')}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full text-zinc-300 text-[10px] font-bold italic">No preview data</div>
+            )}
           </div>
         </div>
       </div>
