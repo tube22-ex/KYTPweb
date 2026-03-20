@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { MapLoader } from './components/MapLoader';
 import { TypingArea } from './components/TypingArea';
 import { PlayerLane } from './components/PlayerLane';
+import { MapEditor } from './components/MapEditor';
 import { ParseResult, fetchMapData } from './services/api';
 import {
   joinRoom,
@@ -58,6 +59,7 @@ export default function App() {
   // 表示トグル
   const [showHistory, setShowHistory] = useState(false);
   const [showGuide, setShowGuide] = useState(true);
+  const [showEditor, setShowEditor] = useState(false);
 
   // 現在の再生/タイピングブロック
   const [activeBlockIdx, setActiveBlockIdx] = useState(0);
@@ -197,6 +199,7 @@ export default function App() {
     if (inRoom) {
       await setRoomMapId(roomId, inputMapId);
     }
+    setShowEditor(false); // エディタからロードされた場合も閉じる
   };
 
   const handleBackToMenu = async () => {
@@ -357,6 +360,13 @@ export default function App() {
             className="history-toggle flex h-12 w-6 bg-white border border-rose-100 items-center justify-center text-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all z-20 shadow-sm mt-4 rounded-r-md"
           >
             <span className="text-[10px] tabular-nums">{showHistory ? '◀' : '▶'}</span>
+          </button>
+          <button
+            onClick={() => setShowEditor(true)}
+            className="flex h-12 w-6 bg-white border border-rose-100 items-center justify-center text-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all z-20 shadow-sm mt-1 rounded-r-md"
+            title="譜面ビルダーを開く"
+          >
+            <span className="text-[14px]">✎</span>
           </button>
         </div>
 
@@ -559,6 +569,17 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {showEditor && (
+        <div className="absolute inset-0 z-[100] bg-black/20 backdrop-blur-md flex items-center justify-center p-8">
+          <MapEditor 
+            onClose={() => setShowEditor(false)} 
+            onSaved={() => {
+               // 必要に応じてリフレッシュ処理を追加
+            }}
+          />
+        </div>
+      )}
 
       <footer className="py-2 opacity-10 text-[8px] font-black uppercase tracking-[0.5em] pointer-events-none relative z-10 w-full text-center flex-shrink-0">
         通うタイピング

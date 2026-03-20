@@ -79,7 +79,7 @@ function getTokenizer(): Promise<any> {
   return tokenizerPromise;
 }
 
-async function splitYomi(
+export async function splitYomi(
   _lyrics: string,
   word: string,
   MIN = 3,
@@ -200,7 +200,7 @@ async function splitYomi(
 }
 
 // ③ JsonLine配列 → Chunk配列（フラット）
-function toChunks(jsonLines: ParsedLine[]): Chunk[] {
+export function toChunks(jsonLines: ParsedLine[]): Chunk[] {
   const result: Chunk[] = [];
   jsonLines.forEach((line, lineIdx) => {
     if (!line.rawWord.trim() || line.isEnd) return;
@@ -219,7 +219,7 @@ function toChunks(jsonLines: ParsedLine[]): Chunk[] {
 }
 
 // ④ Chunk配列 → DisplayLine配列
-function buildDisplayLines(chunks: Chunk[], lineMaxChars = 14): DisplayLine[] {
+export function buildDisplayLines(chunks: Chunk[], lineMaxChars = 14): DisplayLine[] {
   const lines: DisplayLine[] = [];
   let current: DisplayLine | null = null;
   let absCounter = 0;
@@ -252,7 +252,7 @@ function buildDisplayLines(chunks: Chunk[], lineMaxChars = 14): DisplayLine[] {
 }
 
 // ⑤ DisplayLine配列 → DisplaySet配列
-function buildDisplaySets(allLines: DisplayLine[], setMaxLines = 4): DisplaySet[] {
+export function buildDisplaySets(allLines: DisplayLine[], setMaxLines = 4): DisplaySet[] {
   const sets: DisplaySet[] = [];
 
   // まず、DisplayLineを「元の歌詞の行（absLineIdx）」ごとにグループ化する
