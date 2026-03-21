@@ -653,17 +653,16 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                       const isJudgeTarget = judgeChunkKey === thisChunkKey && judgeResult !== null;
                       return (
                         <span key={cIdx} style={{ position: 'relative', display: 'inline-block' }}>
-                          {/* チャンク上の判定テキスト — 文字に完全に被せる */}
+                          {/* チャンク上の判定テキスト — 左にははみ出してよい、右にははみ出さない */}
                           {isJudgeTarget && (
                             <span style={{
                               position: 'absolute',
                               top: 0,
-                              left: 0,
-                              right: 0,
+                              right: '1em',
                               bottom: 0,
                               display: 'flex',
                               alignItems: 'center',
-                              justifyContent: 'flex-start',
+                              justifyContent: 'flex-end',
                               fontSize: '1.3em',
                               fontWeight: 900,
                               fontStyle: 'italic',
@@ -675,7 +674,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                               zIndex: 20,
                               animation: 'judgePopIn 0.15s ease-out forwards',
                               letterSpacing: '0.02em',
-                              overflow: 'visible',
                             }}>
                               {judgeResult}
                             </span>
@@ -785,58 +783,64 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         )}
       </div>
 
-      {/* リザルト */}
+      {/* リザルト — 画面全体オーバーレイ */}
       {isGameOver && (
-        <div className='flex flex-col items-center justify-center gap-4 py-8 w-full bg-white border-4 border-white shadow-2xl relative overflow-hidden text-center rounded-none bubble-bg h-full'>
-          <div className='absolute -top-10 -left-10 w-40 h-40 bg-rose-100 blur-3xl opacity-50' />
-          <div className='absolute -bottom-10 -right-10 w-40 h-40 bg-purple-100 blur-3xl opacity-50' />
-          <div className='text-8xl font-black text-rose-400 italic tracking-tighter drop-shadow-lg scale-y-110 leading-none'>FINISH!</div>
-          <div className='flex flex-col gap-2'>
-            <div className='font-black uppercase tracking-tighter' style={{ fontSize: '40px', color: '#1a1a1a', textShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
-              ステージスコア: <span className='text-rose-500'>{scoreText}</span>
-            </div>
-            <div className='font-bold uppercase tracking-[0.5em]' style={{ fontSize: '14px', color: '#666' }}>最大コンボ: {roomState?.maxSharedCombo || 0}</div>
-          </div>
+        <div className='fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-white/95 backdrop-blur-md overflow-y-auto text-center'>
+          <div className='absolute -top-20 -left-20 w-96 h-96 bg-rose-100 blur-3xl opacity-60' />
+          <div className='absolute -bottom-20 -right-20 w-96 h-96 bg-purple-100 blur-3xl opacity-60' />
 
-          {/* 速度リザルト */}
-          {speedStats && Object.keys(speedStats).length > 0 && (
-            <div className="w-full max-w-sm bg-zinc-50 border border-zinc-100 p-4">
-              <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-3">タイピング速度</div>
-              <div className="flex flex-col gap-2">
-                {Object.entries(speedStats)
-                  .sort(([, a], [, b]) => b.avg - a.avg)
-                  .map(([pid, stats]) => {
-                    const p = roomState?.players?.[pid];
-                    if (!p) return null;
-                    return (
-                      <div key={pid} className="flex items-center gap-3">
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
-                        <span className="text-[12px] font-bold text-zinc-600 w-20 truncate">
-                          {p.name}{pid === playerId ? ' ★' : ''}
-                        </span>
-                        <div className="flex-1 bg-zinc-200 h-2 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full" style={{
-                            width: `${Math.min(100, (stats.avg / 10) * 100)}%`,
-                            background: p.color,
-                          }} />
-                        </div>
-                        <span className="text-[11px] font-mono text-zinc-500 w-16 text-right">
-                          <span className="font-black" style={{ color: p.color }}>{stats.avg.toFixed(1)}</span> c/s
-                        </span>
-                        <span className="text-[10px] font-mono text-zinc-400 w-14 text-right">
-                          中{stats.median.toFixed(1)}
-                        </span>
-                      </div>
-                    );
-                  })}
+          <div className='relative z-10 flex flex-col items-center gap-6 py-10'>
+            <div style={{ fontSize: 'clamp(80px, 14vw, 160px)', fontWeight: 900, fontStyle: 'italic', letterSpacing: '-0.04em', lineHeight: 1 }}
+              className='text-rose-400 drop-shadow-2xl'>
+              FINISH!
+            </div>
+
+            <div className='flex flex-col gap-2'>
+              <div className='font-black uppercase tracking-tighter' style={{ fontSize: 'clamp(24px, 4vw, 48px)', color: '#1a1a1a', textShadow: '0 2px 4px rgba(0,0,0,0.15)' }}>
+                ステージスコア: <span className='text-rose-500'>{scoreText}</span>
+              </div>
+              <div className='font-bold uppercase tracking-[0.5em] text-zinc-500' style={{ fontSize: '15px' }}>
+                最大コンボ: {roomState?.maxSharedCombo || 0}
               </div>
             </div>
-          )}
 
-          <button onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) { } onBackToMenu(); }}
-            className='bg-rose-500 hover:bg-rose-600 text-white font-black text-xl px-24 py-6 rounded-none shadow-2xl shadow-rose-200 transition-all hover:scale-110 active:scale-95'>
-            ステージ選択に戻る
-          </button>
+            {/* 速度リザルト */}
+            {speedStats && Object.keys(speedStats).length > 0 && (
+              <div className="w-full max-w-sm bg-zinc-50 border border-zinc-100 p-4">
+                <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-3">タイピング速度</div>
+                <div className="flex flex-col gap-2">
+                  {Object.entries(speedStats)
+                    .sort(([, a], [, b]) => b.avg - a.avg)
+                    .map(([pid, stats]) => {
+                      const p = roomState?.players?.[pid];
+                      if (!p) return null;
+                      return (
+                        <div key={pid} className="flex items-center gap-3">
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                          <span className="text-[12px] font-bold text-zinc-600 w-20 truncate">
+                            {p.name}{pid === playerId ? ' ★' : ''}
+                          </span>
+                          <div className="flex-1 bg-zinc-200 h-2 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${Math.min(100, (stats.avg / 10) * 100)}%`, background: p.color }} />
+                          </div>
+                          <span className="text-[11px] font-mono text-zinc-500 w-16 text-right">
+                            <span className="font-black" style={{ color: p.color }}>{stats.avg.toFixed(1)}</span> c/s
+                          </span>
+                          <span className="text-[10px] font-mono text-zinc-400 w-14 text-right">
+                            中{stats.median.toFixed(1)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            <button onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) { } onBackToMenu(); }}
+              className='bg-rose-500 hover:bg-rose-600 text-white font-black text-xl px-24 py-6 rounded-none shadow-2xl shadow-rose-200 transition-all hover:scale-110 active:scale-95'>
+              ステージ選択に戻る
+            </button>
+          </div>
         </div>
       )}
 

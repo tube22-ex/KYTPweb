@@ -603,6 +603,7 @@ export default function App() {
               setEditorInitialData(null);
               setEditorInitialId(null);
             }}
+            volume={volume}
             onSaved={async (mid) => {
               if (roomState?.mapId === mid || mid === editorInitialId) {
                 const updated = await fetchMapData(mid);
