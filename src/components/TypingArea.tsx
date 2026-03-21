@@ -14,6 +14,7 @@ interface Props {
   onBlockChange: (idx: number) => void;
   onLineChange?: (lineIdx: number) => void;
   volume: number;
+  hideVideo: boolean;
 }
 
 const getComboMultiplier = (combo: number): number => {
@@ -46,7 +47,7 @@ const calcJudge = (remainMs: number, intervalMs: number): JudgeResult => {
 //   BAD: { color: '#FF4444', stroke: '#880000', shadow: '0 0 8px #FF4444, 0 0 16px #CC0000, 2px 2px 0 #550000, -1px -1px 0 #550000' },
 // };
 
-export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomState, onBackToMenu, onBlockChange, onLineChange, volume }) => {
+export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomState, onBackToMenu, onBlockChange, onLineChange, volume, hideVideo }) => {
   const [currentBlockIdx, setCurrentBlockIdx] = useState(0);
   const [currentLineIdx, setCurrentLineIdx] = useState(0);
   const [currentChunkIdx, setCurrentChunkIdx] = useState(0);
@@ -763,7 +764,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 <span className="font-black uppercase tracking-widest mb-0.5 score-label" style={{ color: '#1a1a1a', opacity: 1, textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>合計スコア</span>
                 <div className="font-black tracking-tighter shrink-0 score-value" style={{ color: '#1a1a1a', textShadow: '0 2px 4px rgba(0,0,0,0.2)', opacity: 1 }}>{scoreText}</div>
               </div>
-              <div className="flex-[0_0_auto] w-[391px] h-full bg-black relative group border-x-2 border-white/10 flex flex-col items-center justify-center shrink-0">
+              <div className="flex-[0_0_auto] w-[391px] h-full bg-black relative group border-x-2 border-white/10 flex flex-col items-center justify-center shrink-0"
+                style={{ display: hideVideo ? 'none' : undefined }}>
                 <div id='youtube-player' className="w-full h-full" />
               </div>
               <div className="flex-1 min-w-0 p-3 flex flex-col justify-between bubble-bg bg-white overflow-y-auto">

@@ -112,6 +112,7 @@ export default function App() {
     return saved ? Number(saved) : 50;
   });
 
+  const [hideVideo, setHideVideo] = useState(false);
   useEffect(() => {
     localStorage.setItem('kytp_volume', volume.toString());
     (window as any).typeVolume = volume / 100;
@@ -380,6 +381,10 @@ export default function App() {
                         className="w-full h-1.5 bg-rose-100 rounded-lg appearance-none cursor-pointer accent-rose-400"
                       />
                     </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <label className="text-[9px] font-black text-rose-300 uppercase italic">Hide Video</label>
+                      <input type="checkbox" checked={hideVideo} onChange={e => setHideVideo(e.target.checked)} className="accent-rose-400" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -533,6 +538,7 @@ export default function App() {
                       onBackToMenu={handleBackToMenu}
                       onBlockChange={(idx) => setActiveBlockIdx(idx)}
                       volume={volume}
+                      hideVideo={hideVideo}
                     />
                   </div>
                 )}
