@@ -189,21 +189,6 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    if (roomState?.mapId) {
-      if (!mapData) {
-        fetchMapData(roomState.mapId).then(data => {
-          setMapData(data);
-          saveToHistory(data, roomState.mapId!);
-        }).catch(err => {
-          console.error('Failed to sync map:', err);
-        });
-      }
-    } else {
-      setMapData(null);
-    }
-  }, [roomState?.mapId, mapData]);
-
   const handleMapLoad = async (data: ParseResult, inputMapId: string) => {
     setMapData(data);
     saveToHistory(data, inputMapId);
@@ -215,13 +200,32 @@ export default function App() {
     setEditorInitialId(null);
   };
 
+  const isLeavingRef = useRef(false);
+
   const handleBackToMenu = async () => {
+    isLeavingRef.current = true;
     const isHost = determineHostId(roomState?.players) === playerId;
     if (isHost && roomId) {
       await resetRoom(roomId);
     }
     setMapData(null);
+    setTimeout(() => { isLeavingRef.current = false; }, 1000);
   };
+
+  useEffect(() => {
+    if (roomState?.mapId) {
+      if (!mapData && !isLeavingRef.current) {
+        fetchMapData(roomState.mapId).then(data => {
+          setMapData(data);
+          saveToHistory(data, roomState.mapId!);
+        }).catch(err => {
+          console.error('Failed to sync map:', err);
+        });
+      }
+    } else {
+      setMapData(null);
+    }
+  }, [roomState?.mapId, mapData]);
 
   useEffect(() => {
     if (!inRoom) {
@@ -596,6 +600,11 @@ export default function App() {
                       )}
                     </button>
                   ))}
+
+                  {mapData && (
+                    <div style={{ minHeight: `${850}px`, flexShrink: 0 }} />
+                  )}
+
                 </div>
               </div>
             </aside>

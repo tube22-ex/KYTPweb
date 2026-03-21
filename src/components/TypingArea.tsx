@@ -66,6 +66,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   // 速度計測
   const measureStartTimeRef = useRef<number | null>(null);
   const setTotalCharsRef = useRef<number>(0);
+  const typedCharsInSetRef = useRef<number>(0); // セット内で実際に打ち終えたチャンクの累計文字数
   const speedSamplesRef = useRef<number[]>([]);
 
   const playerRef = useRef<any>(null);
@@ -91,9 +92,9 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
   const endTimeMs = useMemo(() => {
     const endLine = mapData.lines.find(l => l.isEnd);
-    if (endLine) return endLine.timeMs;
+    if (endLine) return endLine.timeMs + 10000; // 10秒バッファ
     const lastLine = mapData.lines[mapData.lines.length - 1];
-    return lastLine ? lastLine.timeMs + 3000 : undefined;
+    return lastLine ? lastLine.timeMs + 13000 : undefined;
   }, [mapData.lines]);
 
   const isMine = React.useCallback((absLineIdx: number): boolean =>
@@ -195,6 +196,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       .reduce((sum, c) => sum + c.text.length, 0);
     setTotalCharsRef.current = myTotalChars;
     measureStartTimeRef.current = Date.now();
+    typedCharsInSetRef.current = 0;
   }, [currentBlockIdx, isStarted, isGameOver]);
 
   useEffect(() => {
@@ -203,7 +205,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       if (!isStarted || isGameOver || !p || typeof p.getCurrentTime !== 'function') return;
       const ms = p.getCurrentTime() * 1000;
       setCurrentTime(p.getCurrentTime());
-      if (endTimeMs && ms >= endTimeMs) { setIsGameOver(true); p.stopVideo(); return; }
+      if (endTimeMs && ms >= endTimeMs && currentBlockIdx >= mapData.displaySets.length - 1) { setIsGameOver(true); p.stopVideo(); return; }
 
       const ns = mapData.displaySets?.[currentBlockIdx + 1];
       if (ns && ms >= ns.timeMs) {
@@ -401,12 +403,15 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         const gc = rs?.globalChunkIdx ?? 0;
 
         // ===== 速度倍率計算 =====
+        // 今打ち終えたチャンクの文字数を累計に加算
+        typedCharsInSetRef.current += currentLine.chunks[currentChunkIdx].text.length;
         const elapsedSec = measureStartTimeRef.current
           ? (Date.now() - measureStartTimeRef.current) / 1000
           : 1;
-        const totalChars = setTotalCharsRef.current || 1;
-        const charsPerSec = totalChars / Math.max(elapsedSec, 0.1);
-        const speedMult = charsPerSec / 3; // 基準3文字/秒
+        const typedChars = typedCharsInSetRef.current;
+        const charsPerSec = typedChars / Math.max(elapsedSec, 0.1);
+        const speedMult = charsPerSec / 5; // 基準3文字/秒
+
 
         // ===== チャンク完了ごとに音・判定 =====
         try { clear_sound.play(); } catch (_) { }
@@ -472,7 +477,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             const finalElapsedSec = measureStartTimeRef.current
               ? (Date.now() - measureStartTimeRef.current) / 1000
               : 1;
-            const finalCPS = setTotalCharsRef.current / Math.max(finalElapsedSec, 0.1);
+            const finalCPS = typedCharsInSetRef.current / Math.max(finalElapsedSec, 0.1);
             const newSamples = [...speedSamplesRef.current, finalCPS];
             speedSamplesRef.current = newSamples;
             updatePlayerSpeedSamples(roomId, playerId, newSamples).catch(console.error);
@@ -824,10 +829,9 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                             <div className="h-full rounded-full" style={{ width: `${Math.min(100, (stats.avg / 10) * 100)}%`, background: p.color }} />
                           </div>
                           <span className="text-[11px] font-mono text-zinc-500 w-16 text-right">
-                            <span className="font-black" style={{ color: p.color }}>{stats.avg.toFixed(1)}</span> c/s
-                          </span>
+                            <span className="font-black" style={{ color: p.color }}>{(stats.avg * 60).toFixed(0)}</span> c/m                          </span>
                           <span className="text-[10px] font-mono text-zinc-400 w-14 text-right">
-                            中{stats.median.toFixed(1)}
+                            中{(stats.median * 60).toFixed(0)}
                           </span>
                         </div>
                       );
