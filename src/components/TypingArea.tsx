@@ -28,9 +28,6 @@ const getComboMultiplier = (combo: number): number => {
 
 type JudgeResult = 'PERFECT' | 'GOOD' | 'OK' | 'BAD';
 
-// 残り時間の割合で判定（1セット内の行ごと）
-// ratio = remainMs / intervalMs
-// > 5/6 → PERFECT, > 3/6 → GOOD, > 1/6 → OK, else → BAD
 const calcJudge = (remainMs: number, intervalMs: number): JudgeResult => {
   if (intervalMs <= 0) return 'BAD';
   const ratio = remainMs / intervalMs;
@@ -39,13 +36,6 @@ const calcJudge = (remainMs: number, intervalMs: number): JudgeResult => {
   if (ratio > 1 / 6) return 'OK';
   return 'BAD';
 };
-
-// const JUDGE_STYLE: Record<JudgeResult, { color: string; shadow: string; stroke: string }> = {
-//   PERFECT: { color: '#FFE500', stroke: '#FF6600', shadow: '0 0 8px #FFE500, 0 0 20px #FF8C00, 0 0 40px #FF4400, 2px 2px 0 #AA4400, -1px -1px 0 #AA4400' },
-//   GOOD: { color: '#00FF88', stroke: '#007744', shadow: '0 0 8px #00FF88, 0 0 20px #00CC66, 0 0 40px #009944, 2px 2px 0 #004422, -1px -1px 0 #004422' },
-//   OK: { color: '#44CCFF', stroke: '#0055AA', shadow: '0 0 8px #44CCFF, 0 0 20px #0088CC, 2px 2px 0 #003366, -1px -1px 0 #003366' },
-//   BAD: { color: '#FF4444', stroke: '#880000', shadow: '0 0 8px #FF4444, 0 0 16px #CC0000, 2px 2px 0 #550000, -1px -1px 0 #550000' },
-// };
 
 export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomState, onBackToMenu, onBlockChange, onLineChange, volume, hideVideo }) => {
   const [currentBlockIdx, setCurrentBlockIdx] = useState(0);
@@ -59,15 +49,13 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const [videoDuration, setVideoDuration] = useState(0);
   const [playerState, setPlayerState] = useState<number>(-1);
 
-  // 判定演出 — どのチャンクの上に表示するか "absLineIdx-chunkIdx" で特定
   const [judgeResult, setJudgeResult] = useState<JudgeResult | null>(null);
   const [judgeChunkKey, setJudgeChunkKey] = useState<string | null>(null);
   const judgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 速度計測
   const measureStartTimeRef = useRef<number | null>(null);
   const setTotalCharsRef = useRef<number>(0);
-  const typedCharsInSetRef = useRef<number>(0); // セット内で実際に打ち終えたチャンクの累計文字数
+  const typedCharsInSetRef = useRef<number>(0);
   const speedSamplesRef = useRef<number[]>([]);
 
   const playerRef = useRef<any>(null);
@@ -81,6 +69,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     return Object.keys(roomState.players).sort();
   }, [roomState?.players, playerId]);
 
+  // ★ playerIds を ref でも持つ（ブロック切り替え時に最新値を同期的に参照するため）
+  const playerIdsRef = useRef(playerIds);
+  useEffect(() => { playerIdsRef.current = playerIds; }, [playerIds]);
+
   const isHost = determineHostId(roomState?.players) === playerId;
 
   const getAssignedPlayerId = useMemo(() => {
@@ -93,7 +85,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
   const endTimeMs = useMemo(() => {
     const endLine = mapData.lines.find(l => l.isEnd);
-    if (endLine) return endLine.timeMs + 10000; // 10秒バッファ
+    if (endLine) return endLine.timeMs + 10000;
     const lastLine = mapData.lines[mapData.lines.length - 1];
     return lastLine ? lastLine.timeMs + 13000 : undefined;
   }, [mapData.lines]);
@@ -188,7 +180,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     onLineChange?.(currentLine?.absLineIdx ?? 0);
   }, [currentBlockIdx, currentLine, onBlockChange, onLineChange]);
 
-  // セット切り替え時に速度計測をリセット&開始
   useEffect(() => {
     if (!isStarted || isGameOver || !currentSet) return;
     const myTotalChars = currentSet.lines
@@ -206,20 +197,40 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       if (!isStarted || isGameOver || !p || typeof p.getCurrentTime !== 'function') return;
       const ms = p.getCurrentTime() * 1000;
       setCurrentTime(p.getCurrentTime());
-      if (endTimeMs && ms >= endTimeMs && currentBlockIdx >= mapData.displaySets.length - 1) { setIsGameOver(true); p.stopVideo(); return; }
+      if (endTimeMs && ms >= endTimeMs && currentBlockIdx >= mapData.displaySets.length - 1) {
+        setIsGameOver(true); p.stopVideo(); return;
+      }
 
       const ns = mapData.displaySets?.[currentBlockIdx + 1];
       if (ns && ms >= ns.timeMs) {
         const nextBlockIdx = currentBlockIdx + 1;
-        setCurrentBlockIdx(nextBlockIdx);
-        setCurrentChunkIdx(0);
-        setIsEngineReady(false);
-        preparedRef.current = "";
-
         const nLines = mapData.displaySets[nextBlockIdx].lines;
-        const firstM = nLines.findIndex(l => isMine(l.absLineIdx));
+
+        // ★ ref経由で最新のplayerIdsを取得（Reactの再レンダリングを待たない）
+        const currentPlayerIds = playerIdsRef.current;
+        const firstM = nLines.findIndex(l =>
+          getAssignedPlayerId(l.absLineIdx, currentPlayerIds) === playerId
+        );
         const newLocalLineIdx = firstM !== -1 ? firstM : 0;
+
+        // ★ ブロック切り替えと同時にエンジンを即起動（遅延ゼロ）
+        if (firstM !== -1) {
+          const firstChunk = nLines[firstM].chunks?.[0];
+          if (firstChunk) {
+            keygraph.reset();
+            keygraph.build(firstChunk.text);
+            const key = `${nLines[firstM].absLineIdx}-0`;
+            preparedRef.current = key;
+            setIsEngineReady(true);
+          }
+        } else {
+          setIsEngineReady(false);
+          preparedRef.current = "";
+        }
+
+        setCurrentBlockIdx(nextBlockIdx);
         setCurrentLineIdx(newLocalLineIdx);
+        setCurrentChunkIdx(0);
 
         if (roomId && playerId) {
           const absStart = firstM !== -1 ? nLines[firstM].absLineIdx : -1;
@@ -403,21 +414,16 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         const gl = rs?.globalLineIdx ?? 0;
         const gc = rs?.globalChunkIdx ?? 0;
 
-        // ===== 速度倍率計算 =====
-        // 今打ち終えたチャンクの文字数を累計に加算
         typedCharsInSetRef.current += currentLine.chunks[currentChunkIdx].text.length;
         const elapsedSec = measureStartTimeRef.current
           ? (Date.now() - measureStartTimeRef.current) / 1000
           : 1;
         const typedChars = typedCharsInSetRef.current;
         const charsPerSec = typedChars / Math.max(elapsedSec, 0.1);
-        const speedMult = charsPerSec / 5; // 基準3文字/秒
+        const speedMult = charsPerSec / 5;
 
-
-        // ===== チャンク完了ごとに音・判定 =====
         try { clear_sound.play(); } catch (_) { }
 
-        // 判定：currentSet.timeMs ～ nextSet.timeMs のインターバルを6等分
         const p = playerRef.current;
         const nowVideoMs = p && typeof p.getCurrentTime === 'function'
           ? p.getCurrentTime() * 1000
@@ -431,12 +437,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         const chunkKey = `${currentLine.absLineIdx}-${currentChunkIdx}`;
         showJudge(judge, chunkKey);
 
-        // ===== スコア加算 =====
         const perfectBonus = judge === 'PERFECT' ? 5 : 0;
         const addScore = Math.round(10 * mult * speedMult) + perfectBonus;
         if (rs?.sharedScore !== undefined) incrementSharedScore(roomId, rs.sharedScore + addScore);
 
-        // ===== グローバル進捗 =====
         const isCorrectOrder = currentLine.absLineIdx === gl && currentChunkIdx === gc;
         if (isCorrectOrder) {
           const combo = (rs?.sharedCombo || 0) + 1;
@@ -456,10 +460,11 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           setCurrentChunkIdx(nextChunkIdxForFirebase);
           nextChunkToBuild = currentLine.chunks[nextChunkIdxForFirebase];
         } else {
+          const currentPlayerIds = playerIdsRef.current;
           let nextM = -1;
           if (currentSet?.lines) {
             for (let i = currentLineIdx + 1; i < currentSet.lines.length; i++) {
-              const pid = getAssignedPlayerId(currentSet.lines[i].absLineIdx, playerIds);
+              const pid = getAssignedPlayerId(currentSet.lines[i].absLineIdx, currentPlayerIds);
               if (pid === playerId) { nextM = i; break; }
             }
           }
@@ -470,7 +475,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             nextChunkIdxForFirebase = 0;
             nextChunkToBuild = currentSet!.lines[nextM].chunks[0];
           } else {
-            // ===== セット内全担当行を打ち終えた → 速度サンプル記録 =====
             setCurrentLineIdx(-1);
             nextLineIdxForFirebase = -1;
             nextChunkIdxForFirebase = 0;
@@ -551,7 +555,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     }
   }, [roomState?.globalLineIdx, mapData.displaySets, isGameOver, isStarted, currentBlockIdx]);
 
-  // リザルト用速度統計
   const speedStats = useMemo(() => {
     if (!roomState?.players) return null;
     const result: Record<string, { avg: number; median: number }> = {};
@@ -621,7 +624,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
         {!isGameOver && (
           <div className="w-full flex flex-col gap-0">
-            {/* 歌詞エリア */}
             <div className="lyrics-area scrollbar-hide" ref={lyricsAreaRef} data-typing-progress={inputCount}>
               {currentSet?.lines.map((line: any, idx: number) => {
                 const globalLineIdx = roomState?.globalLineIdx ?? 0;
@@ -659,25 +661,15 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                       const isJudgeTarget = judgeChunkKey === thisChunkKey && judgeResult !== null;
                       return (
                         <span key={cIdx} style={{ position: 'relative', display: 'inline-block' }}>
-                          {/* チャンク上の判定テキスト — 左にははみ出してよい、右にははみ出さない */}
                           {isJudgeTarget && (
                             <span style={{
-                              position: 'absolute',
-                              top: 0,
-                              right: '1em',
-                              bottom: 0,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'flex-end',
-                              fontSize: '1.3em',
-                              fontWeight: 900,
-                              fontStyle: 'italic',
-                              whiteSpace: 'nowrap',
-                              color: linePlayerColor,
+                              position: 'absolute', top: 0, right: '1em', bottom: 0,
+                              display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                              fontSize: '1.3em', fontWeight: 900, fontStyle: 'italic',
+                              whiteSpace: 'nowrap', color: linePlayerColor,
                               textShadow: `0 0 8px ${linePlayerColor}, 0 0 20px ${linePlayerColor}, 0 0 40px ${linePlayerColor}, 2px 2px 0 rgba(0,0,0,0.6), -1px -1px 0 rgba(0,0,0,0.6)`,
                               WebkitTextStroke: `1px rgba(0,0,0,0.4)`,
-                              pointerEvents: 'none',
-                              zIndex: 20,
+                              pointerEvents: 'none', zIndex: 20,
                               animation: 'judgePopIn 0.15s ease-out forwards',
                               letterSpacing: '0.02em',
                             }}>
@@ -764,8 +756,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 <span className="font-black uppercase tracking-widest mb-0.5 score-label" style={{ color: '#1a1a1a', opacity: 1, textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>合計スコア</span>
                 <div className="font-black tracking-tighter shrink-0 score-value" style={{ color: '#1a1a1a', textShadow: '0 2px 4px rgba(0,0,0,0.2)', opacity: 1 }}>{scoreText}</div>
               </div>
-              <div className="flex-[0_0_auto] w-[391px] h-full bg-black relative group border-x-2 border-white/10 flex flex-col items-center justify-center shrink-0"
-                style={{ display: hideVideo ? 'none' : undefined }}>
+              <div
+                className="flex-[0_0_auto] w-[391px] h-full bg-black relative group border-x-2 border-white/10 flex flex-col items-center justify-center shrink-0"
+                style={{ visibility: hideVideo ? 'hidden' : 'visible' }}
+              >
                 <div id='youtube-player' className="w-full h-full" />
               </div>
               <div className="flex-1 min-w-0 p-3 flex flex-col justify-between bubble-bg bg-white overflow-y-auto">
@@ -790,18 +784,13 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         )}
       </div>
 
-      {/* リザルト — 画面全体オーバーレイ */}
       {isGameOver && (
         <div className='fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-white/95 backdrop-blur-md overflow-y-auto text-center'>
           <div className='absolute -top-20 -left-20 w-96 h-96 bg-rose-100 blur-3xl opacity-60' />
           <div className='absolute -bottom-20 -right-20 w-96 h-96 bg-purple-100 blur-3xl opacity-60' />
-
           <div className='relative z-10 flex flex-col items-center gap-6 py-10'>
             <div style={{ fontSize: 'clamp(80px, 14vw, 160px)', fontWeight: 900, fontStyle: 'italic', letterSpacing: '-0.04em', lineHeight: 1 }}
-              className='text-rose-400 drop-shadow-2xl'>
-              FINISH!
-            </div>
-
+              className='text-rose-400 drop-shadow-2xl'>FINISH!</div>
             <div className='flex flex-col gap-2'>
               <div className='font-black uppercase tracking-tighter' style={{ fontSize: 'clamp(24px, 4vw, 48px)', color: '#1a1a1a', textShadow: '0 2px 4px rgba(0,0,0,0.15)' }}>
                 ステージスコア: <span className='text-rose-500'>{scoreText}</span>
@@ -810,8 +799,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 最大コンボ: {roomState?.maxSharedCombo || 0}
               </div>
             </div>
-
-            {/* 速度リザルト */}
             {speedStats && Object.keys(speedStats).length > 0 && (
               <div className="w-full max-w-sm bg-zinc-50 border border-zinc-100 p-4">
                 <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-3">タイピング速度</div>
@@ -831,7 +818,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                             <div className="h-full rounded-full" style={{ width: `${Math.min(100, (stats.avg / 10) * 100)}%`, background: p.color }} />
                           </div>
                           <span className="text-[11px] font-mono text-zinc-500 w-16 text-right">
-                            <span className="font-black" style={{ color: p.color }}>{(stats.avg * 60).toFixed(0)}</span> c/m                          </span>
+                            <span className="font-black" style={{ color: p.color }}>{(stats.avg * 60).toFixed(0)}</span> c/m
+                          </span>
                           <span className="text-[10px] font-mono text-zinc-400 w-14 text-right">
                             中{(stats.median * 60).toFixed(0)}
                           </span>
@@ -841,7 +829,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 </div>
               </div>
             )}
-
             <button onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) { } onBackToMenu(); }}
               className='bg-rose-500 hover:bg-rose-600 text-white font-black text-xl px-24 py-6 rounded-none shadow-2xl shadow-rose-200 transition-all hover:scale-110 active:scale-95'>
               ステージ選択に戻る
