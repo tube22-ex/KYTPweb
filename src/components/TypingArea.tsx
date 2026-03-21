@@ -39,12 +39,12 @@ const calcJudge = (remainMs: number, intervalMs: number): JudgeResult => {
   return 'BAD';
 };
 
-const JUDGE_STYLE: Record<JudgeResult, { color: string; shadow: string; stroke: string }> = {
-  PERFECT: { color: '#FFE500', stroke: '#FF6600', shadow: '0 0 8px #FFE500, 0 0 20px #FF8C00, 0 0 40px #FF4400, 2px 2px 0 #AA4400, -1px -1px 0 #AA4400' },
-  GOOD: { color: '#00FF88', stroke: '#007744', shadow: '0 0 8px #00FF88, 0 0 20px #00CC66, 0 0 40px #009944, 2px 2px 0 #004422, -1px -1px 0 #004422' },
-  OK: { color: '#44CCFF', stroke: '#0055AA', shadow: '0 0 8px #44CCFF, 0 0 20px #0088CC, 2px 2px 0 #003366, -1px -1px 0 #003366' },
-  BAD: { color: '#FF4444', stroke: '#880000', shadow: '0 0 8px #FF4444, 0 0 16px #CC0000, 2px 2px 0 #550000, -1px -1px 0 #550000' },
-};
+// const JUDGE_STYLE: Record<JudgeResult, { color: string; shadow: string; stroke: string }> = {
+//   PERFECT: { color: '#FFE500', stroke: '#FF6600', shadow: '0 0 8px #FFE500, 0 0 20px #FF8C00, 0 0 40px #FF4400, 2px 2px 0 #AA4400, -1px -1px 0 #AA4400' },
+//   GOOD: { color: '#00FF88', stroke: '#007744', shadow: '0 0 8px #00FF88, 0 0 20px #00CC66, 0 0 40px #009944, 2px 2px 0 #004422, -1px -1px 0 #004422' },
+//   OK: { color: '#44CCFF', stroke: '#0055AA', shadow: '0 0 8px #44CCFF, 0 0 20px #0088CC, 2px 2px 0 #003366, -1px -1px 0 #003366' },
+//   BAD: { color: '#FF4444', stroke: '#880000', shadow: '0 0 8px #FF4444, 0 0 16px #CC0000, 2px 2px 0 #550000, -1px -1px 0 #550000' },
+// };
 
 export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomState, onBackToMenu, onBlockChange, onLineChange, volume }) => {
   const [currentBlockIdx, setCurrentBlockIdx] = useState(0);
