@@ -43,8 +43,9 @@ export default function App() {
   // roomInputはユーザーが入力する表示用ID、roomIdはFirebase内部用ID（room-プレフィックス付き）
   const [roomInput, setRoomInput] = useState('');
   const [roomId, setRoomId] = useState('');
-  const [playerName, setPlayerName] = useState(() => 'User_' + Math.random().toString(36).substring(2, 6));
-  const [playerId] = useState(() => {
+  const [playerName, setPlayerName] = useState(() => {
+    return localStorage.getItem('kytp_player_name') || 'User_' + Math.random().toString(36).substring(2, 6);
+  }); const [playerId] = useState(() => {
     const saved = localStorage.getItem('kytp_player_id');
     if (saved) return saved;
     const newId = Math.random().toString(36).substring(2, 10);
@@ -117,6 +118,13 @@ export default function App() {
     (window as any).clearVolume = volume / 100;
     (window as any).missVolume = volume / 100;
   }, [volume]);
+
+
+  useEffect(() => {
+    localStorage.setItem('kytp_player_name', playerName);
+  }, [playerName]);
+
+
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
