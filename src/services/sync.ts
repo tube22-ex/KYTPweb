@@ -56,6 +56,7 @@ export interface PlayerState {
   currentWord: string;
   joinedAt: number;
   lastSeen: number;
+  speedSamples?: number[];  // 各セットのchars/sec記録
 }
 
 export interface RoomState {
@@ -484,4 +485,15 @@ export const getAllCachedMaps = async (): Promise<any[]> => {
     console.error("getAllCachedMaps error:", err);
     throw err;
   }
+};
+
+export const updatePlayerSpeedSamples = async (
+  roomId: string,
+  playerId: string,
+  speedSamples: number[]
+) => {
+  await update(ref(db, `rooms/${roomId}/players/${playerId}`), {
+    speedSamples,
+    lastSeen: Date.now(),
+  });
 };
