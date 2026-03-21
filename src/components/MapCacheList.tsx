@@ -5,9 +5,10 @@ import { ParseResult } from '../services/api';
 interface MapCacheListProps {
   onSelect: (data: ParseResult, mapId: string) => void;
   onRequest?: (data: ParseResult, mapId: string) => void;
+  onEdit?: (data: ParseResult, mapId: string) => void;
 }
 
-export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, onRequest }) => {
+export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, onRequest, onEdit }) => {
   const [cachedMaps, setCachedMaps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,10 +86,11 @@ export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, onRequest 
             : null;
 
           return (
-            <button
+            // ★ buttonからdivに変更（内部にbuttonがあるため）
+            <div
               key={map.id}
               onClick={() => onSelect(map as ParseResult, map.id)}
-              className="chart-card group relative aspect-video overflow-hidden rounded-md shadow-sm hover:shadow-md transition-all border-none"
+              className="chart-card group relative aspect-video overflow-hidden rounded-md shadow-sm hover:shadow-md transition-all border-none cursor-pointer"
             >
               {/* Full Image background */}
               {thumbnail ? (
@@ -96,8 +98,8 @@ export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, onRequest 
               ) : (
                 <div className="w-full h-full bg-zinc-200 flex items-center justify-center text-[8px] text-zinc-400 font-black italic">NO IMAGE</div>
               )}
-              
-              {/* Top Band: Ranking & Title (Compact 6-col size) */}
+
+              {/* Top Band: ID & Title */}
               <div className="absolute top-0 left-0 right-0 bg-white/80 py-1 px-2 flex items-start gap-1.5 border-b border-rose-100/10 pointer-events-none h-[38px]">
                 <span className="text-rose-500 text-[10px] font-black italic whitespace-nowrap shrink-0 mt-0.5">
                   #{map.id}
@@ -107,14 +109,14 @@ export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, onRequest 
                 </span>
               </div>
 
-              {/* Bottom Band: Artist (Compact 6-col size) */}
+              {/* Bottom Band: Artist */}
               <div className="absolute bottom-0 left-0 right-0 bg-white/80 py-0.5 px-2 border-t border-rose-100/5 pointer-events-none h-[28px] flex items-center">
                 <div className="text-[10px] font-black text-zinc-900 line-clamp-2 text-left leading-none flex-1">
                   {map.artist || 'Unknown'}
                 </div>
               </div>
 
-              {/* Quick Request Button (Guest only icon) */}
+              {/* Quick Request Button (ゲストのみ) */}
               {onRequest && (
                 <button
                   onClick={(e) => {
@@ -130,9 +132,23 @@ export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, onRequest 
                 </button>
               )}
 
+              {/* Edit Button (ホストのみ) */}
+              {onEdit && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(map as ParseResult, map.id);
+                  }}
+                  className="absolute top-1 right-1 w-6 h-6 bg-white/95 text-rose-400 rounded-full flex items-center justify-center shadow-md hover:bg-rose-50 hover:scale-110 active:scale-95 transition-all z-20 border border-rose-50"
+                  title="この譜面を編集する"
+                >
+                  <span className="text-[12px]">✎</span>
+                </button>
+              )}
+
               {/* Hover Effect Overlay */}
               <div className="absolute inset-0 bg-rose-500/0 group-hover:bg-rose-500/10 transition-colors pointer-events-none" />
-            </button>
+            </div>
           );
         })}
       </div>

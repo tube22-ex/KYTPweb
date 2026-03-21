@@ -245,27 +245,54 @@ h3,
 
 /* HISTORYが閉じているとき */
 .left-column:not(.has-history) {
-  width: 0 !important;
-  min-width: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  overflow: hidden !important;
+  width: 24px !important;
+  min-width: 24px !important;
 }
 
-.layout-root {
-  gap: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
+.left-column.has-history {
+  width: 154px !important;
+  min-width: 154px !important;
 }
 
-/* トグルボタンのみ残す（幅を持たせない） */
-.history-toggle {
-  position: fixed !important;
-  left: 0 !important;
-  width: 20px !important;
-  z-index: 300 !important;
+.left-column aside {
+  width: 0;
+  transition: width 0.2s ease-out;
+}
+
+.left-column aside.open {
+  width: 130px;
+}
+
+/* トグルボタンの配置（絶対配置でサイドバーの右端に固定） */
+.history-toggle-container {
+  position: absolute;
   top: 100px;
-  /* Adjust as needed */
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 50;
+}
+
+.history-toggle-btn {
+  display: flex;
+  height: 48px;
+  width: 24px;
+  background: white;
+  border: 1px solid #fee2e2; /* rose-100 */
+  align-items: center;
+  justify-content: center;
+  color: #fda4af; /* rose-300 */
+  box-shadow: 2px 0 10px rgba(0,0,0,0.02);
+  border-left: none;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+  transition: all 0.2s;
+}
+
+.history-toggle-btn:hover {
+  background: #fff1f2; /* rose-50 */
+  color: #f43f5e; /* rose-500 */
 }
 
 .layout-root {

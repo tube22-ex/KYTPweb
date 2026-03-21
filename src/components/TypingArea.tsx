@@ -453,32 +453,20 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   useEffect(() => {
     if (!mapData.displaySets || mapData.displaySets.length === 0 || !isStarted || isGameOver) return;
 
-    // 表示（入力）される最後のセットの、最後の行の絶対インデックスを特定
-    const lastSet = mapData.displaySets[mapData.displaySets.length - 1];
-    const lastLineInAll = lastSet.lines[lastSet.lines.length - 1];
-    const lastAbsIdx = lastLineInAll?.absLineIdx ?? -1;
+    const totalSets = mapData.displaySets.length;
+    // 最後のセットの最後の行まで globalLineIdx が進んだか、
+    // currentBlockIdx が最終セットを超えたら終了
+    const lastSet = mapData.displaySets[totalSets - 1];
+    const lastLineInLastSet = lastSet.lines[lastSet.lines.length - 1];
+    const lastAbsIdx = lastLineInLastSet?.absLineIdx ?? -1;
 
-    const gl = roomState?.globalLineIdx ?? 0;
-
-    // 詳細なデバッグログ
-    if (gl % 5 === 0 || (lastAbsIdx !== -1 && gl >= lastAbsIdx - 2)) {
-      console.log('[GameOverCheck DEBUG]', {
-        globalLineIdx: gl,
-        targetLastAbsIdx: lastAbsIdx,
-        blocksCount: mapData.displaySets.length,
-        currentBlockIdx,
-        mapDataLinesCount: mapData.lines?.length
-      });
-    }
-
-    // 最後の行を打ち終わった時点で終了
-    if (lastAbsIdx !== -1 && gl > lastAbsIdx) {
+    // currentBlockIdx が最終セットに達していて、かつ gl > lastAbsIdx のときだけ終了
+    if (currentBlockIdx >= totalSets - 1 && lastAbsIdx !== -1 && gl > lastAbsIdx) {
       console.log('!!! All lines finished - triggering GameOver !!!');
       setIsGameOver(true);
       try { playerRef.current?.stopVideo(); } catch (e) { }
     }
-  }, [roomState?.globalLineIdx, mapData.displaySets, isGameOver, isStarted]);
-
+  }, [roomState?.globalLineIdx, mapData.displaySets, isGameOver, isStarted, currentBlockIdx]);
 
   if (!mapData || !mapData.displaySets || mapData.displaySets.length === 0 || !currentSet) return <div>Loading...</div>;
   const scoreText = (roomState?.sharedScore || 0).toString().padStart(6, '0');

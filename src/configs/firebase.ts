@@ -19,4 +19,7 @@ export const db = getDatabase(app);
 export const fs = getFirestore(app);
 
 
+import { doc, getDoc } from "firebase/firestore";
 
+const snap = await getDoc(doc(fs, 'mapCache', '721'));
+console.log(JSON.stringify(snap.data(), null, 2));

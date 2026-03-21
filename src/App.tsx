@@ -17,6 +17,7 @@ import {
   subscribeToAllRooms,
   leaveRoom as cleanupPlayer,
   updatePlayerHeartbeat,
+  releaseSlot,
 } from './services/sync';
 
 interface PlayedHistoryItem {
@@ -54,12 +55,14 @@ export default function App() {
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [allRooms, setAllRooms] = useState<Record<string, RoomState> | null>(null);
 
-  const [_mySlotId, setMySlotId] = useState<SlotId | null>(null);
+  const [mySlotId, setMySlotId] = useState<SlotId | null>(null);
 
   // 表示トグル
   const [showHistory, setShowHistory] = useState(false);
   const [showGuide, setShowGuide] = useState(true);
+  const [editorInitialId, setEditorInitialId] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
+  const [editorInitialData, setEditorInitialData] = useState<ParseResult | null>(null);
 
   // 現在の再生/タイピングブロック
   const [activeBlockIdx, setActiveBlockIdx] = useState(0);
@@ -199,7 +202,9 @@ export default function App() {
     if (inRoom) {
       await setRoomMapId(roomId, inputMapId);
     }
-    setShowEditor(false); // エディタからロードされた場合も閉じる
+    setShowEditor(false);
+    setEditorInitialData(null);
+    setEditorInitialId(null);
   };
 
   const handleBackToMenu = async () => {
@@ -256,6 +261,20 @@ export default function App() {
     }
   }, [inRoom, roomState, playerId]);
 
+
+  // ページを閉じたときにFirestoreスロットを確実に解放する
+  useEffect(() => {
+    if (!inRoom || !roomId || !playerId || !mySlotId) return;
+
+    const handleUnload = () => {
+      releaseSlot(roomId, mySlotId);
+    };
+
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [inRoom, roomId, playerId, mySlotId]);
+
+
   const isHost = determineHostId(roomState?.players) === playerId;
 
   const HistoryCard = ({ item }: { item: PlayedHistoryItem }) => (
@@ -301,12 +320,11 @@ export default function App() {
       <div className={`flex flex-row items-start relative z-10 flex-1 layout-root ${!mapData ? 'lobby-screen' : ''}`}
         style={{ margin: 0, padding: 0, width: '100%' }}
       >
-        {/* 左カラム: プレイ履歴 (130px) */}
         <div className={`left-column relative h-full flex flex-row items-start ${showHistory ? 'has-history' : ''}`} style={{ flexShrink: 0 }}>
           <aside className={`relative flex flex-col h-full transition-all duration-200 ease-out overflow-hidden ${showHistory ? 'open' : ''}`}
-            style={{ flexShrink: 0 }}>
+            style={{ flexShrink: 0, width: showHistory ? '130px' : '0px' }}>
             <div className="w-[130px] flex flex-col h-full pr-1">
-              <div className="flex items-center justify-between mb-3 ml-1 flex-shrink-0">
+              <div className="flex items-center justify-between mb-3 ml-1 flex-shrink-0 pt-3">
                 <div className="flex items-center gap-1.5">
                   <div className="w-1.5 h-3 bg-rose-400 rounded-full"></div>
                   <h2 className="text-[10px] font-black text-rose-300 uppercase tracking-[0.2em] italic">History</h2>
@@ -355,19 +373,17 @@ export default function App() {
               </div>
             </div>
           </aside>
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className="history-toggle flex h-12 w-6 bg-white border border-rose-100 items-center justify-center text-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all z-20 shadow-sm mt-4 rounded-r-md"
-          >
-            <span className="text-[10px] tabular-nums">{showHistory ? '◀' : '▶'}</span>
-          </button>
-          <button
-            onClick={() => setShowEditor(true)}
-            className="flex h-12 w-6 bg-white border border-rose-100 items-center justify-center text-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all z-20 shadow-sm mt-1 rounded-r-md"
-            title="譜面ビルダーを開く"
-          >
-            <span className="text-[14px]">✎</span>
-          </button>
+
+          <div className="history-toggle-container">
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="history-toggle-btn"
+              title="履歴の表示切替"
+            >
+              <span className="text-[10px] tabular-nums">{showHistory ? '◀' : '▶'}</span>
+            </button>
+            {/* サイドバーの下部にボタンを追加したい場合はここ */}
+          </div>
         </div>
 
         {/* 中央カラム */}
@@ -477,6 +493,15 @@ export default function App() {
                         roomId={roomId}
                         playerName={playerName}
                         roomState={roomState}
+                        onEdit={(data: ParseResult, mid: string) => {
+                          console.log("displaySets[0].lines[0].chunks[0].absLineIdx:",
+                            data.displaySets?.[0]?.lines?.[0]?.chunks?.[0]?.absLineIdx);
+                          console.log("lines[0]:", data.lines?.[0]);
+                          setEditorInitialData(data);
+                          setEditorInitialId(mid);
+                          setShowEditor(true);
+                        }}
+
                       />
                     </div>
                   </div>
@@ -573,10 +598,22 @@ export default function App() {
       {showEditor && (
         <div className="absolute inset-0 z-[100] bg-black/20 backdrop-blur-md flex items-center justify-center p-8">
           <MapEditor
-            onClose={() => setShowEditor(false)}
-            onSaved={() => {
-              // 必要に応じてリフレッシュ処理を追加
+            onClose={() => {
+              setShowEditor(false);
+              setEditorInitialData(null);
+              setEditorInitialId(null);
             }}
+            onSaved={async (mid) => {
+              if (roomState?.mapId === mid || mid === editorInitialId) {
+                const updated = await fetchMapData(mid);
+                setMapData(updated);
+              }
+              setShowEditor(false);
+              setEditorInitialData(null);
+              setEditorInitialId(null);
+            }}
+            initialData={editorInitialData}
+            initialId={editorInitialId}
           />
         </div>
       )}

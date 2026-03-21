@@ -2,16 +2,16 @@ import React, { useState } from 'react';
 import { fetchMapData, ParseResult } from '../services/api';
 import { MapCacheList } from './MapCacheList';
 import { requestMap, clearRequests, removeRequest, RoomState } from '../services/sync';
-
 interface MapLoaderProps {
   onLoad: (data: ParseResult, mapId: string) => void;
   isHost: boolean;
   roomId?: string;
   playerName?: string;
   roomState?: RoomState | null;
+  onEdit?: (data: ParseResult, mapId: string) => void;
 }
 
-export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad, isHost, roomId, playerName, roomState }) => {
+export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad, isHost, roomId, playerName, roomState, onEdit }) => {
   const [mapId, setMapId] = useState<string>('1');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -330,6 +330,7 @@ export const MapLoader: React.FC<MapLoaderProps> = ({ onLoad, isHost, roomId, pl
           }
         }} 
         onRequest={isHost ? undefined : handleQuickRequest}
+        onEdit={onEdit}
       />
     </div>
   );

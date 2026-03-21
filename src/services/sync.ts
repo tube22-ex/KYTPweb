@@ -1,48 +1,48 @@
-import { ref, onValue, set, update, get, onDisconnect, remove } from "firebase/database";
+import {
+  ref, onValue, set, update, get,
+  onDisconnect, remove
+} from "firebase/database";
 import { db, fs } from "../configs/firebase";
 import {
-  doc, getDoc, setDoc, collection, getDocs,
-  query, limit, runTransaction, writeBatch, updateDoc
+  doc, getDoc, setDoc, collection,
+  getDocs, query, limit, runTransaction,
+  writeBatch, updateDoc
 } from "firebase/firestore";
 
 // ============================================================
-// スロット定義（色・ホスト情報を一元管理）
-// ★ PLAYER_COLORS を廃止し、こちらに集約
+// スロット定義
 // ============================================================
+
 export type SlotId = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8";
 
 export interface SlotData {
   slotId: SlotId;
   color: string;
   isHost: boolean;
-  occupiedBy: string | null; // playerId or null
+  occupiedBy: string | null;
 }
 
-// スロット番号 → 色・ホストフラグの対応表
-// PlayerLane.tsx の getColorLabel と色を合わせています
 export const SLOT_CONFIG = [
-  { slotId: "1", color: "#FF416C", isHost: true },
-  { slotId: "2", color: "#2B86C5", isHost: false },
-  { slotId: "3", color: "#3DFC64", isHost: false },
-  { slotId: "4", color: "#FBD72B", isHost: false },
-  { slotId: "5", color: "#A855F7", isHost: false },
-  { slotId: "6", color: "#FF8C00", isHost: false },
-  { slotId: "7", color: "#00BCD4", isHost: false },
-  { slotId: "8", color: "#FF69B4", isHost: false },
-] as const;
-
-
+  { slotId: "1" as SlotId, color: "#FF416C", isHost: true },
+  { slotId: "2" as SlotId, color: "#2B86C5", isHost: false },
+  { slotId: "3" as SlotId, color: "#3DFC64", isHost: false },
+  { slotId: "4" as SlotId, color: "#FBD72B", isHost: false },
+  { slotId: "5" as SlotId, color: "#A855F7", isHost: false },
+  { slotId: "6" as SlotId, color: "#FF8C00", isHost: false },
+  { slotId: "7" as SlotId, color: "#00BCD4", isHost: false },
+  { slotId: "8" as SlotId, color: "#FF69B4", isHost: false },
+];
 
 // ============================================================
-// プレイヤー・ルームの型定義
+// 型定義
 // ============================================================
 
 export interface PlayerState {
   id: string;
   name: string;
   color: string;
-  slotId: SlotId;    // ★ 追加: スロットID（退室時のFirestore解放に使用）
-  isHost: boolean;   // ★ 追加: ホストフラグ（joinedAtソートを廃止）
+  slotId: SlotId;
+  isHost: boolean;
   currentLineIdx: number;
   currentWordIdx: number;
   currentChunkIdx: number;
@@ -72,62 +72,71 @@ export interface RoomState {
   requests?: Record<string, {
     mapId: string;
     playerName: string;
-    userName: string; // players[id].name
     timestamp: number;
     title?: string;
-    videoId?: string; // ★ 追加
+    videoId?: string;
   }>;
 }
 
 // ============================================================
-// Firestoreスロット管理（内部ヘルパー）
+// Firestoreスロット管理
 // ============================================================
 
 /**
- * ルーム作成時にFirestoreのスロットを初期化します。
- * 全スロットを occupiedBy: null で用意します。
+ * ルーム初回入室時にFirestoreのスロットを初期化します。
  */
 const initRoomSlots = async (roomId: string): Promise<void> => {
   const batch = writeBatch(fs);
   for (const slot of SLOT_CONFIG) {
-    const slotRef = doc(fs, "rooms", roomId, "slots", slot.slotId);
-    batch.set(slotRef, { ...slot, occupiedBy: null });
+    batch.set(doc(fs, "rooms", roomId, "slots", slot.slotId), {
+      slotId: slot.slotId,
+      color: slot.color,
+      isHost: slot.isHost,
+      occupiedBy: null,
+    });
   }
   await batch.commit();
 };
 
 /**
  * Firestoreトランザクションでスロットをアトミックに取得します。
- * 同時入室の競合は runTransaction が自動リトライします。
  */
-const acquireSlot = async (roomId: string, playerId: string): Promise<SlotData> => {
+const acquireSlot = async (
+  roomId: string,
+  playerId: string
+): Promise<SlotData> => {
   return await runTransaction(fs, async (tx) => {
-    // スロットを番号順に全取得（固定4件）
+    // 全スロットをトランザクション内で読み取り
     const slotDocs = await Promise.all(
       SLOT_CONFIG.map(s => tx.get(doc(fs, "rooms", roomId, "slots", s.slotId)))
     );
-    const slots: SlotData[] = slotDocs.map(d => d.data() as SlotData);
 
-    // 既に自分が入っているスロットがあれば再利用（再接続対応）
-    const mySlot = slots.find(s => s.occupiedBy === playerId);
-    if (mySlot) return mySlot;
+    // 既に自分のスロットがあれば再利用（再接続対応）
+    for (const d of slotDocs) {
+      const data = d.data() as SlotData;
+      if (data?.occupiedBy === playerId) return data;
+    }
 
-    // 番号が若い順に空きスロットを探す
-    const available = slots.find(s => s.occupiedBy === null);
-    if (!available) throw new Error("ROOM_FULL");
+    // 番号順に空きスロットを探す
+    for (const d of slotDocs) {
+      const data = d.data() as SlotData;
+      if (data && data.occupiedBy === null) {
+        tx.update(d.ref, { occupiedBy: playerId });
+        return { ...data, occupiedBy: playerId };
+      }
+    }
 
-    // アトミックに占有
-    const slotRef = doc(fs, "rooms", roomId, "slots", available.slotId);
-    tx.update(slotRef, { occupiedBy: playerId });
-
-    return { ...available, occupiedBy: playerId };
+    throw new Error("ROOM_FULL");
   });
 };
 
 /**
- * Firestoreのスロットを解放します（退室・切断時）。
+ * Firestoreのスロットを解放します。
  */
-export const releaseSlot = async (roomId: string, slotId: SlotId): Promise<void> => {
+export const releaseSlot = async (
+  roomId: string,
+  slotId: SlotId
+): Promise<void> => {
   try {
     const slotRef = doc(fs, "rooms", roomId, "slots", slotId);
     const snap = await getDoc(slotRef);
@@ -135,8 +144,25 @@ export const releaseSlot = async (roomId: string, slotId: SlotId): Promise<void>
       await updateDoc(slotRef, { occupiedBy: null });
     }
   } catch (err) {
-    // 部屋ごと削除済みの場合などは無視
-    console.warn("releaseSlot: slot may already be gone", err);
+    console.warn("releaseSlot failed:", err);
+  }
+};
+
+/**
+ * Firestoreのルームを完全削除します（スロット含む）。
+ */
+const deleteFirestoreRoom = async (roomId: string): Promise<void> => {
+  console.log("deleteFirestoreRoom called:", roomId); // ★
+  try {
+    const batch = writeBatch(fs);
+    const slotsSnap = await getDocs(collection(fs, "rooms", roomId, "slots"));
+    console.log("slots to delete:", slotsSnap.docs.length); // ★
+    slotsSnap.docs.forEach(d => batch.delete(d.ref));
+    batch.delete(doc(fs, "rooms", roomId));
+    await batch.commit();
+    console.log("deleteFirestoreRoom done:", roomId); // ★
+  } catch (err) {
+    console.warn("deleteFirestoreRoom failed:", err); // ★
   }
 };
 
@@ -146,8 +172,6 @@ export const releaseSlot = async (roomId: string, slotId: SlotId): Promise<void>
 
 /**
  * 部屋へ参加します。
- * ★ color引数を廃止 → Firestoreスロットから色を決定します。
- * 戻り値で color / isHost / slotId を返します。
  */
 export const joinRoom = async (
   roomId: string,
@@ -156,23 +180,23 @@ export const joinRoom = async (
 ): Promise<{ color: string; isHost: boolean; slotId: SlotId }> => {
   console.log("joinRoom started:", { roomId, playerId, playerName });
 
-  // スロットが存在しない（初回入室）なら初期化
-  const firstSlotSnap = await getDoc(doc(fs, "rooms", roomId, "slots", "1"));
-  if (!firstSlotSnap.exists()) {
+  // Firestoreにスロットがなければ初期化
+  const firstSlot = await getDoc(doc(fs, "rooms", roomId, "slots", "1"));
+  if (!firstSlot.exists()) {
     await initRoomSlots(roomId);
   }
 
-  // トランザクションでスロットをアトミックに確保
+  // トランザクションでスロットを確保
   const slot = await acquireSlot(roomId, playerId);
 
-  // RDBにプレイヤー情報を書き込む
+  // RDBにプレイヤー情報を書き込み
   const playerRef = ref(db, `rooms/${roomId}/players/${playerId}`);
   await set(playerRef, {
     id: playerId,
     name: playerName,
-    color: slot.color,     // Firestoreスロットから取得した色
-    slotId: slot.slotId,   // スロットID（退室時の解放に使用）
-    isHost: slot.isHost,   // ホストフラグ
+    color: slot.color,
+    slotId: slot.slotId,
+    isHost: slot.isHost,
     currentLineIdx: 0,
     currentWordIdx: 0,
     currentChunkIdx: 0,
@@ -184,17 +208,12 @@ export const joinRoom = async (
     isFinished: false,
     currentTyping: "",
     currentWord: "",
-    joinedAt: Date.now(),  // ★ serverTimestamp をやめ Date.now() に統一（即時確定）
+    joinedAt: Date.now(),
     lastSeen: Date.now(),
   });
 
-  // RDB切断時にプレイヤー情報を自動削除
+  // RDB切断時にプレイヤーを自動削除
   onDisconnect(playerRef).remove();
-
-  // タブを閉じたときにFirestoreスロットも解放
-  // （onDisconnect はFirestoreに対応していないため beforeunload で補完）
-  const handleUnload = () => releaseSlot(roomId, slot.slotId);
-  window.addEventListener("beforeunload", handleUnload, { once: true });
 
   console.log("joinRoom completed:", slot);
   return { color: slot.color, isHost: slot.isHost, slotId: slot.slotId };
@@ -202,22 +221,18 @@ export const joinRoom = async (
 
 /**
  * 部屋から退出します。
- * ★ slotId引数を追加 → Firestoreスロットを解放します。
  */
 export const leaveRoom = async (
   roomId: string,
   playerId: string,
-  slotId: SlotId | null  // ghostプレイヤー削除時はnullの場合がある
+  slotId: SlotId | null
 ): Promise<void> => {
   // Firestoreスロットを解放
   if (slotId) {
     await releaseSlot(roomId, slotId);
   }
-
   // RDBからプレイヤー削除
-  const playerRef = ref(db, `rooms/${roomId}/players/${playerId}`);
-  await remove(playerRef);
-
+  await remove(ref(db, `rooms/${roomId}/players/${playerId}`));
   // 部屋が空なら削除
   await deleteRoomIfEmpty(roomId);
 };
@@ -226,25 +241,44 @@ export const leaveRoom = async (
 // ホスト判定
 // ============================================================
 
-/**
- * ホストプレイヤーのIDを返します。
- * ★ joinedAtソートを廃止 → RDBの isHost フラグを参照します。
- */
 export const determineHostId = (
   players: Record<string, PlayerState> | undefined
 ): string | null => {
   if (!players) return null;
-  const host = Object.values(players).find(p => p.isHost);
-  return host?.id ?? null;
+  const pList = Object.values(players);
+  if (pList.length === 0) return null;
+  const host = pList.find(p => p.isHost);
+  if (host) return host.id;
+  return pList.sort((a, b) => a.joinedAt - b.joinedAt)[0].id;
+};
+
+// ============================================================
+// 部屋の削除
+// ============================================================
+
+/**
+ * RDBにプレイヤーがいなければ部屋を完全削除します。
+ */
+export const deleteRoomIfEmpty = async (roomId: string): Promise<boolean> => {
+  const playersSnap = await get(ref(db, `rooms/${roomId}/players`));
+  const isEmpty = !playersSnap.exists()
+    || !playersSnap.val()
+    || Object.keys(playersSnap.val()).length === 0;
+
+  if (isEmpty) {
+    // RDB削除
+    await remove(ref(db, `rooms/${roomId}`));
+    // Firestore削除（スロット含む）
+    await deleteFirestoreRoom(roomId);
+    return true;
+  }
+  return false;
 };
 
 // ============================================================
 // プレイヤー進捗・状態更新
 // ============================================================
 
-/**
- * 自分の打鍵進捗を送信します。
- */
 export const updatePlayerProgress = async (
   roomId: string,
   playerId: string,
@@ -258,8 +292,7 @@ export const updatePlayerProgress = async (
   currentTyping?: string,
   currentWord?: string
 ) => {
-  const playerRef = ref(db, `rooms/${roomId}/players/${playerId}`);
-  await update(playerRef, {
+  await update(ref(db, `rooms/${roomId}/players/${playerId}`), {
     currentLineIdx: lineIdx,
     currentWordIdx: wordIdx,
     currentChunkIdx: currentChunkIdx ?? 0,
@@ -273,9 +306,6 @@ export const updatePlayerProgress = async (
   });
 };
 
-/**
- * プレイヤーの生存確認（ハートビート）を更新します。
- */
 export const updatePlayerHeartbeat = async (roomId: string, playerId: string) => {
   const playerRef = ref(db, `rooms/${roomId}/players/${playerId}`);
   const snap = await get(playerRef);
@@ -284,67 +314,16 @@ export const updatePlayerHeartbeat = async (roomId: string, playerId: string) =>
   }
 };
 
-/**
- * プレイヤーの完了状態を更新します。
- */
 export const setPlayerFinished = async (roomId: string, playerId: string) => {
-  const playerRef = ref(db, `rooms/${roomId}/players/${playerId}`);
-  await update(playerRef, { isFinished: true });
-};
-
-/**
- * 部屋が空なら部屋ごと削除します。
- */
-export const deleteRoomIfEmpty = async (roomId: string): Promise<boolean> => {
-  const playersRef = ref(db, `rooms/${roomId}/players`);
-  const snapshot = await get(playersRef);
-  if (!snapshot.exists() || !snapshot.val() || Object.keys(snapshot.val()).length === 0) {
-    await remove(ref(db, `rooms/${roomId}`));
-    return true;
-  }
-  return false;
-};
-
-/**
- * 譜面をリクエストします。
- */
-export const requestMap = async (roomId: string, mapId: string, playerName: string, title?: string, videoId?: string) => {
-  const newRequestRef = ref(db, `rooms/${roomId}/requests/${Date.now()}_${Math.random().toString(36).substring(2, 6)}`);
-  await set(newRequestRef, {
-    mapId,
-    playerName,
-    timestamp: Date.now(),
-    title: title || null,
-    videoId: videoId || null
-  });
-};
-
-/**
- * リクエストを削除します。
- */
-export const removeRequest = async (roomId: string, requestId: string) => {
-  const requestRef = ref(db, `rooms/${roomId}/requests/${requestId}`);
-  await remove(requestRef);
-};
-
-/**
- * 全リクエストを削除します。
- */
-export const clearRequests = async (roomId: string) => {
-  const requestsRef = ref(db, `rooms/${roomId}/requests`);
-  await remove(requestsRef);
+  await update(ref(db, `rooms/${roomId}/players/${playerId}`), { isFinished: true });
 };
 
 // ============================================================
 // ルーム操作
 // ============================================================
 
-/**
- * 部屋を初期状態（ロビー）に戻します。
- */
 export const resetRoom = async (roomId: string) => {
-  const roomRef = ref(db, `rooms/${roomId}`);
-  await update(roomRef, {
+  await update(ref(db, `rooms/${roomId}`), {
     status: "idle",
     startTime: null,
     sharedScore: 0,
@@ -356,25 +335,17 @@ export const resetRoom = async (roomId: string) => {
   });
 };
 
-/**
- * 曲IDを変更します。（ホスト用）
- */
 export const setRoomMapId = async (roomId: string, mapId: string) => {
-  const roomRef = ref(db, `rooms/${roomId}`);
-  await update(roomRef, {
+  await update(ref(db, `rooms/${roomId}`), {
     mapId,
     startTime: null,
     sharedScore: 0,
   });
 };
 
-/**
- * プレイを開始し、サーバー時刻を書き込みます。
- */
 export const setRoomStartTime = async (roomId: string) => {
   const { serverTimestamp } = await import("firebase/database");
-  const roomRef = ref(db, `rooms/${roomId}`);
-  await update(roomRef, {
+  await update(ref(db, `rooms/${roomId}`), {
     startTime: serverTimestamp(),
     status: "playing",
     sharedScore: 0,
@@ -386,115 +357,131 @@ export const setRoomStartTime = async (roomId: string) => {
   });
 };
 
-/**
- * 共有スコアを更新します。
- */
 export const incrementSharedScore = async (roomId: string, amount: number) => {
-  const roomRef = ref(db, `rooms/${roomId}`);
-  await update(roomRef, { sharedScore: amount });
+  await update(ref(db, `rooms/${roomId}`), { sharedScore: amount });
 };
 
-/**
- * 共有コンボを更新します。
- */
 export const updateSharedCombo = async (roomId: string, combo: number, maxCombo: number) => {
-  const roomRef = ref(db, `rooms/${roomId}`);
-  await update(roomRef, { sharedCombo: combo, maxSharedCombo: maxCombo });
+  await update(ref(db, `rooms/${roomId}`), { sharedCombo: combo, maxSharedCombo: maxCombo });
 };
 
-/**
- * 部屋全体のタイピング進捗を更新します。
- */
 export const updateGlobalProgress = async (roomId: string, lineIdx: number, chunkIdx: number) => {
-  const roomRef = ref(db, `rooms/${roomId}`);
-  await update(roomRef, { globalLineIdx: lineIdx, globalChunkIdx: chunkIdx });
+  await update(ref(db, `rooms/${roomId}`), { globalLineIdx: lineIdx, globalChunkIdx: chunkIdx });
 };
 
-/**
- * 再生時間を更新します。（ホスト用）
- */
 export const updateRoomPlayback = async (roomId: string, time: number) => {
-  const roomRef = ref(db, `rooms/${roomId}`);
-  await update(roomRef, { playbackTime: time });
+  await update(ref(db, `rooms/${roomId}`), { playbackTime: time });
 };
 
-/**
- * 部屋のステータスを変更します。
- */
 export const setRoomStatus = async (roomId: string, status: "idle" | "playing" | "finished") => {
-  const roomRef = ref(db, `rooms/${roomId}`);
-  await update(roomRef, { status });
+  await update(ref(db, `rooms/${roomId}`), { status });
 };
 
-/**
- * 部屋の状態を1回だけ取得します。
- */
 export const getRoomState = async (roomId: string): Promise<RoomState | null> => {
-  const roomRef = ref(db, `rooms/${roomId}`);
-  const snapshot = await get(roomRef);
+  const snapshot = await get(ref(db, `rooms/${roomId}`));
   return snapshot.exists() ? (snapshot.val() as RoomState) : null;
 };
 
-/**
- * 部屋のステートを購読します。
- */
 export const subscribeToRoom = (
   roomId: string,
   callback: (state: RoomState | null) => void
 ) => {
-  const roomRef = ref(db, `rooms/${roomId}`);
-  return onValue(roomRef, (snapshot) => {
-    callback(snapshot.exists() ? (snapshot.val() as RoomState) : null);
+  return onValue(ref(db, `rooms/${roomId}`), async (snapshot) => {
+    if (!snapshot.exists()) {
+      // RDBの部屋が消えたらFirestoreも掃除
+      await deleteFirestoreRoom(roomId);
+      callback(null);
+      return;
+    }
+    const state = snapshot.val() as RoomState;
+    // プレイヤーが0人になったらFirestoreも掃除
+    const playerCount = Object.keys(state.players || {}).length;
+    if (playerCount === 0) {
+      await deleteFirestoreRoom(roomId);
+    }
+    callback(state);
   });
 };
 
-/**
- * ローカル時計とFirebaseサーバーのズレを取得します。
- */
 export const getServerTimeOffset = (): Promise<number> => {
   return new Promise((resolve) => {
-    const offsetRef = ref(db, ".info/serverTimeOffset");
-    onValue(offsetRef, (snap) => resolve(snap.val() || 0), { onlyOnce: true });
+    onValue(ref(db, ".info/serverTimeOffset"), (snap) => {
+      resolve(snap.val() || 0);
+    }, { onlyOnce: true });
+  });
+};
+
+export const subscribeToAllRooms = (
+  callback: (rooms: Record<string, RoomState> | null) => void
+) => {
+  return onValue(ref(db, "rooms"), async (snapshot) => {
+    if (!snapshot.exists()) {
+      callback(null);
+      return;
+    }
+    const rooms = snapshot.val() as Record<string, RoomState>;
+    // 各部屋のプレイヤーが0人ならFirestoreも掃除
+    for (const [rid, room] of Object.entries(rooms)) {
+      const playerCount = Object.keys(room.players || {}).length;
+      if (playerCount === 0) {
+        await deleteFirestoreRoom(rid);
+        await remove(ref(db, `rooms/${rid}`));
+      }
+    }
+    callback(rooms);
   });
 };
 
 // ============================================================
-// 譜面キャッシュ
+// リクエスト
+// ============================================================
+
+export const requestMap = async (
+  roomId: string,
+  mapId: string,
+  playerName: string,
+  title?: string,
+  videoId?: string
+) => {
+  const key = `${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  await set(ref(db, `rooms/${roomId}/requests/${key}`), {
+    mapId,
+    playerName,
+    timestamp: Date.now(),
+    title: title || null,
+    videoId: videoId || null,
+  });
+};
+
+export const removeRequest = async (roomId: string, requestId: string) => {
+  await remove(ref(db, `rooms/${roomId}/requests/${requestId}`));
+};
+
+export const clearRequests = async (roomId: string) => {
+  await remove(ref(db, `rooms/${roomId}/requests`));
+};
+
+// ============================================================
+// 譜面キャッシュ（Firestore）
 // ============================================================
 
 export const getCachedMapData = async (mapId: string | number): Promise<any | null> => {
-  const docRef = doc(fs, "mapCache", String(mapId));
-  const snap = await getDoc(docRef);
+  const snap = await getDoc(doc(fs, "mapCache", String(mapId)));
   return snap.exists() ? snap.data() : null;
 };
 
 export const saveMapDataToCache = async (mapId: string | number, data: any) => {
-  const docRef = doc(fs, "mapCache", String(mapId));
-  await setDoc(docRef, data);
+  await setDoc(doc(fs, "mapCache", String(mapId)), data);
 };
 
 export const getAllCachedMaps = async (): Promise<any[]> => {
   console.log("getAllCachedMaps called");
-  const cacheRef = collection(fs, "mapCache");
-  const q = query(cacheRef, limit(50));
   try {
-    const snap = await getDocs(q);
+    const snap = await getDocs(query(collection(fs, "mapCache"), limit(50)));
     console.log("getAllCachedMaps success, count:", snap.docs.length);
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch (err) {
     console.error("getAllCachedMaps error:", err);
     throw err;
   }
-};
-
-/**
- * 全ての部屋リストを購読します。
- */
-export const subscribeToAllRooms = (
-  callback: (rooms: Record<string, RoomState> | null) => void
-) => {
-  const roomsRef = ref(db, "rooms");
-  return onValue(roomsRef, (snapshot) => {
-    callback(snapshot.exists() ? (snapshot.val() as Record<string, RoomState>) : null);
-  });
 };

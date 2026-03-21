@@ -1,5 +1,5 @@
 import kuromoji from 'kuromoji';
-import { saveMapDataToCache } from './sync';
+import { saveMapDataToCache, getCachedMapData } from './sync';
 // ============================================
 // Kuromoji Dict Load Fix (Vite/Browser)
 // ============================================
@@ -293,10 +293,9 @@ export function buildDisplaySets(allLines: DisplayLine[], setMaxLines = 4): Disp
 // ============================================
 
 export const fetchMapData = async (mapId: string | number): Promise<ParseResult> => {
-  // 1. キャッシュをチェック
-  /*
+  // 1. キャッシュをチェック (編集済みのデータを優先的に返す)
   try {
-    const cached = await getCachedMapData(mapId);
+    const cached = await getCachedMapData(String(mapId));
     if (cached && (cached as any).displaySets) {
       console.log('Using cached map data for:', mapId);
       return cached as ParseResult;
@@ -304,7 +303,6 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
   } catch (err) {
     console.warn('Failed to fetch from cache:', err);
   }
-  */
 
   const response = await fetch(`https://ytyping.net/api/maps/${mapId}/json`);
   if (!response.ok) {
