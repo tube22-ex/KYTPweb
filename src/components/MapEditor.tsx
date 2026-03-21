@@ -274,6 +274,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
   const [isSaving, setIsSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [showValidation, setShowValidation] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const playerRef = useRef<any>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -291,9 +292,12 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
       if (playerRef.current) try { playerRef.current.destroy(); } catch (e) { }
       if (!(window as any).YT?.Player) return;
       playerRef.current = new (window as any).YT.Player('editor-player', {
-        height: '200', width: '100%', videoId,
-        playerVars: { autoplay: 0, modestbranding: 1 },
-        events: { onReady: (e: any) => { playerRef.current = e.target; } }
+        height: '100%', width: '100%', videoId,
+        playerVars: { autoplay: 0, modestbranding: 1, rel: 0, origin: window.location.origin },
+        events: {
+          onReady: (e: any) => { playerRef.current = e.target; },
+          onStateChange: (e: any) => { setIsPlaying(e.data === 1); }
+        }
       });
     };
     if (!(window as any).YT) {
@@ -303,7 +307,10 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
       (window as any).onYouTubeIframeAPIReady = init;
     } else init();
     const iv = setInterval(() => {
-      if (playerRef.current?.getCurrentTime) setCurrentTime(playerRef.current.getCurrentTime());
+      if (playerRef.current?.getCurrentTime) {
+        setCurrentTime(playerRef.current.getCurrentTime());
+        setIsPlaying(playerRef.current.getPlayerState?.() === 1);
+      }
     }, 100);
     return () => clearInterval(iv);
   }, [videoId]);
@@ -537,10 +544,21 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
             ))}
           </div>
 
-          <div className="bg-black overflow-hidden relative" style={{ aspectRatio: '16/9' }}>
-            <div id="editor-player" className="w-full h-full" />
-            <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-3 py-1">
+          <div className="bg-black overflow-hidden relative" style={{ width: '100%', height: '180px' }}>
+            <div id="editor-player" style={{ width: '100%', height: '100%' }} />
+            <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-3 py-1 flex items-center justify-between">
               <span className="text-[11px] font-mono text-white tabular-nums">{Math.floor(currentTime)}s / {Math.floor(currentTime * 1000)}ms</span>
+              <button
+                onClick={() => {
+                  if (!playerRef.current) return;
+                  try {
+                    isPlaying ? playerRef.current.pauseVideo() : playerRef.current.playVideo();
+                  } catch (_) { }
+                }}
+                className="text-white text-[16px] w-7 h-7 flex items-center justify-center hover:text-rose-300 transition-colors"
+              >
+                {isPlaying ? '⏸' : '▶'}
+              </button>
             </div>
           </div>
 
@@ -626,23 +644,34 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
             {blocks.map((block, bi) => (
               <div key={block.id} className="border border-zinc-200 overflow-hidden">
                 {/* Block Header */}
-                <div className="bg-zinc-800 px-3 py-1.5 flex items-center justify-between">
+                <div
+                  className="bg-zinc-800 px-3 py-1.5 flex items-center justify-between group cursor-pointer hover:bg-zinc-700 transition-colors"
+                  onClick={() => {
+                    if (playerRef.current?.seekTo) {
+                      playerRef.current.seekTo(block.timeMs / 1000, true);
+                      try { playerRef.current.playVideo(); } catch (_) { }
+                    }
+                  }}
+                >
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-black text-zinc-300 uppercase italic">BLOCK {bi + 1}</span>
+                    <span className="text-[10px] text-zinc-500 group-hover:text-green-400 transition-colors">▶</span>
                     {editingBlockTimeId === block.id ? (
                       <input type="number" value={editingTimeValue}
+                        onClick={e => e.stopPropagation()}
                         onChange={e => setEditingTimeValue(e.target.value)}
                         onBlur={() => commitBlockTime(block.id)} autoFocus
                         onKeyDown={e => { if (e.key === 'Enter') commitBlockTime(block.id); if (e.key === 'Escape') setEditingBlockTimeId(null); }}
                         className="bg-zinc-700 text-green-400 font-mono text-[11px] px-2 py-0.5 w-24 outline-none border border-zinc-500" />
                     ) : (
                       <span className="text-[10px] font-mono text-green-400 cursor-pointer hover:text-green-300"
-                        onClick={() => { setEditingBlockTimeId(block.id); setEditingTimeValue(String(block.timeMs)); }}>
+                        onClick={e => { e.stopPropagation(); setEditingBlockTimeId(block.id); setEditingTimeValue(String(block.timeMs)); }}>
                         {block.timeMs}ms
                       </span>
                     )}
                   </div>
-                  <button onClick={() => addLine(block.id)}
+                  <button
+                    onClick={e => { e.stopPropagation(); addLine(block.id); }}
                     className="text-[10px] font-black text-zinc-400 hover:text-green-400 px-2 py-0.5 border border-zinc-600 hover:border-green-600 transition-colors">
                     + 行追加 ({Math.floor(currentTime * 1000)}ms)
                   </button>
