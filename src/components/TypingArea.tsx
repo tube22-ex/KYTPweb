@@ -62,6 +62,12 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const instanceIdRef = useRef<number>(0);
   const preparedRef = useRef<string>("");
 
+  // ★ getCurrentTime キャッシュref（postMessage呼び出し削減）
+  const currentTimeMsRef = useRef(0);
+
+  // ★ Firebase書き込みdebounce用ref
+  const progressDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const isStarted = roomState?.startTime != null;
 
   const playerIds = useMemo(() => {
@@ -69,7 +75,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     return Object.keys(roomState.players).sort();
   }, [roomState?.players, playerId]);
 
-  // ★ playerIds を ref でも持つ（ブロック切り替え時に最新値を同期的に参照するため）
+  // ★ playerIds のref（ブロック切り替え時に最新値を同期的に参照）
   const playerIdsRef = useRef(playerIds);
   useEffect(() => { playerIdsRef.current = playerIds; }, [playerIds]);
 
@@ -191,14 +197,28 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     typedCharsInSetRef.current = 0;
   }, [currentBlockIdx, isStarted, isGameOver]);
 
+  // ★ currentTime表示専用interval（150ms）— setCurrentTimeのみ担当
   useEffect(() => {
     const int = setInterval(() => {
       const p = playerRef.current;
       if (!isStarted || isGameOver || !p || typeof p.getCurrentTime !== 'function') return;
-      const ms = p.getCurrentTime() * 1000;
-      setCurrentTime(p.getCurrentTime());
+      const t = p.getCurrentTime();
+      currentTimeMsRef.current = t * 1000;
+      setCurrentTime(t);
+    }, 150);
+    return () => clearInterval(int);
+  }, [isStarted, isGameOver]);
+
+  // ★ ブロック切り替え＆ゲーム終了監視（50ms）— currentTimeMsRefから読む
+  useEffect(() => {
+    const int = setInterval(() => {
+      if (!isStarted || isGameOver) return;
+      const ms = currentTimeMsRef.current; // ★ refから読む（postMessageなし）
+
       if (endTimeMs && ms >= endTimeMs && currentBlockIdx >= mapData.displaySets.length - 1) {
-        setIsGameOver(true); p.stopVideo(); return;
+        setIsGameOver(true);
+        try { playerRef.current?.stopVideo(); } catch (e) { }
+        return;
       }
 
       const ns = mapData.displaySets?.[currentBlockIdx + 1];
@@ -206,14 +226,14 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         const nextBlockIdx = currentBlockIdx + 1;
         const nLines = mapData.displaySets[nextBlockIdx].lines;
 
-        // ★ ref経由で最新のplayerIdsを取得（Reactの再レンダリングを待たない）
+        // ★ refから最新のplayerIdsを取得
         const currentPlayerIds = playerIdsRef.current;
         const firstM = nLines.findIndex(l =>
           getAssignedPlayerId(l.absLineIdx, currentPlayerIds) === playerId
         );
         const newLocalLineIdx = firstM !== -1 ? firstM : 0;
 
-        // ★ ブロック切り替えと同時にエンジンを即起動（遅延ゼロ）
+        // ★ ブロック切り替えと同時にエンジンを即起動
         if (firstM !== -1) {
           const firstChunk = nLines[firstM].chunks?.[0];
           if (firstChunk) {
@@ -251,7 +271,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       }
     }, 50);
     return () => clearInterval(int);
-  }, [currentBlockIdx, mapData.displaySets, isStarted, endTimeMs, isGameOver, isMine, isHost, roomId, playerId, playerIds]);
+  }, [currentBlockIdx, mapData.displaySets, isStarted, endTimeMs, isGameOver, isHost, roomId, playerId]);
 
   useEffect(() => {
     if (!isHost || !isStarted || isGameOver) return;
@@ -293,12 +313,11 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const isVideoActive = playerState === 1 || playerState === 2;
   const canSkip = isHost && isVideoActive && (allFinished || isInitialGap) && (nextSet || isFinalSetAndFinished) && !isGameOver && !isNearNextSet;
 
+  // ★ エンジン起動待ち監視（50ms）— currentTimeMsRefから読む
   useEffect(() => {
     if (!isStarted || isEngineReady || isGameOver || !currentSet || !currentLine || !isMe) return;
     const int = setInterval(() => {
-      const p = playerRef.current;
-      if (!p || typeof p.getCurrentTime !== 'function') return;
-      const ms = p.getCurrentTime() * 1000;
+      const ms = currentTimeMsRef.current; // ★ refから読む（postMessageなし）
       const targetTime = (currentLineIdx === 0) ? currentLine.timeMs : currentSet.timeMs;
       if (ms >= targetTime) {
         const key = `${currentLine.absLineIdx}-${currentChunkIdx}`;
@@ -386,18 +405,22 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       const chunkNow = currentLineRef.current?.chunks?.[currentChunkIdxRef.current];
       if (chunkNow) {
         const typed = chunkNow.text.slice(0, ptr);
-        updatePlayerProgress(
-          roomId, playerId,
-          currentLineRef.current!.absLineIdx,
-          currentChunkIdxRef.current,
-          rs?.sharedCombo || 0,
-          rs?.maxSharedCombo || 0,
-          rs?.sharedScore || 0,
-          currentChunkIdxRef.current,
-          ptr,
-          typed,
-          chunkNow.text
-        ).catch(err => console.error('Character sync failed:', err));
+        // ★ debounce: 100ms以内の連続入力はまとめて1回だけ送信
+        if (progressDebounceRef.current) clearTimeout(progressDebounceRef.current);
+        progressDebounceRef.current = setTimeout(() => {
+          updatePlayerProgress(
+            roomId, playerId,
+            currentLineRef.current!.absLineIdx,
+            currentChunkIdxRef.current,
+            rs?.sharedCombo || 0,
+            rs?.maxSharedCombo || 0,
+            rs?.sharedScore || 0,
+            currentChunkIdxRef.current,
+            ptr,
+            typed,
+            chunkNow.text
+          ).catch(err => console.error('Character sync failed:', err));
+        }, 100);
       }
 
       const isFinished = keygraph.is_finished();
@@ -424,10 +447,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
         try { clear_sound.play(); } catch (_) { }
 
-        const p = playerRef.current;
-        const nowVideoMs = p && typeof p.getCurrentTime === 'function'
-          ? p.getCurrentTime() * 1000
-          : currentTime * 1000;
+        const nowVideoMs = currentTimeMsRef.current; // ★ refから読む
         const setStartMs = currentSet?.timeMs ?? 0;
         const nextSetMs = mapData.displaySets[currentBlockIdx + 1]?.timeMs
           ?? (endTimeMs ?? (nowVideoMs + 10000));
@@ -489,6 +509,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           }
         }
 
+        // ★ チャンク完了時はdebounceをキャンセルして即座に送信
+        if (progressDebounceRef.current) clearTimeout(progressDebounceRef.current);
         if (roomId && playerId) {
           updatePlayerProgress(roomId, playerId, nextLineIdxForFirebase, nextChunkIdxForFirebase, 0, 0, 0, nextChunkIdxForFirebase, 0, '', '');
         }
@@ -504,7 +526,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         }
       }
     } else { try { miss_sound.play(); } catch (_) { } }
-  }, [roomId, playerId, endTimeMs, playerIds, getAssignedPlayerId, currentTime, isMine, mapData.displaySets]);
+  }, [roomId, playerId, endTimeMs, getAssignedPlayerId, isMine, mapData.displaySets]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeydown);
@@ -627,7 +649,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             <div className="lyrics-area scrollbar-hide" ref={lyricsAreaRef} data-typing-progress={inputCount}>
               {currentSet?.lines.map((line: any, idx: number) => {
                 const globalLineIdx = roomState?.globalLineIdx ?? 0;
-                const nowMs = currentTime * 1000;
+                const nowMs = currentTimeMsRef.current;
                 const isPreStart = nowMs < (currentSet?.timeMs ?? 0);
                 const isLineActive = line.absLineIdx === globalLineIdx && !isPreStart;
                 const linePlayerId = getAssignedPlayerId(line.absLineIdx, playerIds);
@@ -698,7 +720,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 const myColor = roomState?.players?.[playerId]?.color ?? '#ffffff';
                 const line = currentSet.lines[0];
                 const nextSet = mapData.displaySets[currentBlockIdx + 1];
-                const now = currentTime * 1000;
+                const now = currentTimeMsRef.current;
                 const setEnd = nextSet ? nextSet.timeMs : (videoDuration * 1000);
                 let start, end;
                 if (currentBlockIdx === 0 && now < line.timeMs) { start = 0; end = line.timeMs; }
@@ -706,8 +728,14 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 const progress = Math.max(0, Math.min(100, (now - start) / Math.max(1, end - start) * 100));
                 return (
                   <div className="w-full h-4 bg-black/20">
-                    <div className="h-full transition-all duration-100"
-                      style={{ backgroundColor: myColor, boxShadow: `0 0 10px ${myColor}88`, width: `${progress}%` }} />
+                    {/* ★ transition で150msポーリングのカク付きを補間 */}
+                    <div className="h-full"
+                      style={{
+                        backgroundColor: myColor,
+                        boxShadow: `0 0 10px ${myColor}88`,
+                        width: `${progress}%`,
+                        transition: 'width 150ms linear'
+                      }} />
                   </div>
                 );
               })()}
@@ -776,9 +804,13 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
               </div>
             </div>
 
+            {/* ★ 全体プログレスバーも150ms linearに */}
             <div className="w-full bg-zinc-200 h-1 overflow-hidden relative footer-area">
-              <div className="h-full bg-gradient-to-r from-rose-400 to-rose-500 transition-all duration-500 ease-out"
-                style={{ width: `${Math.max(0, Math.min(100, (currentTime / (videoDuration || 1)) * 100))}%` }} />
+              <div className="h-full bg-gradient-to-r from-rose-400 to-rose-500"
+                style={{
+                  width: `${Math.max(0, Math.min(100, (currentTime / (videoDuration || 1)) * 100))}%`,
+                  transition: 'width 150ms linear'
+                }} />
             </div>
           </div>
         )}
