@@ -65,15 +65,19 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   // ★ getCurrentTime キャッシュref（postMessage呼び出し削減）
   const currentTimeMsRef = useRef(0);
 
-  // ★ Firebase書き込みdebounce用ref
-  const progressDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ★ ptr変化検知用ref（同じptrを重複送信しない）
+  const lastSentPtrRef = useRef<number>(-1);
+  const lastSentLineRef = useRef<number>(-1);
+  const lastSentChunkRef = useRef<number>(-1);
 
   const isStarted = roomState?.startTime != null;
 
+  // ★ 依存配列を文字列キーにして、中身が同じなら再計算しない
+  const playerIdsKey = Object.keys(roomState?.players ?? {}).sort().join(',');
   const playerIds = useMemo(() => {
     if (!roomState || !roomState.players) return [playerId];
     return Object.keys(roomState.players).sort();
-  }, [roomState?.players, playerId]);
+  }, [playerIdsKey, playerId]);
 
   // ★ playerIds のref（ブロック切り替え時に最新値を同期的に参照）
   const playerIdsRef = useRef(playerIds);
@@ -99,6 +103,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const isMine = React.useCallback((absLineIdx: number): boolean =>
     getAssignedPlayerId(absLineIdx, playerIds) === playerId,
     [playerIds, playerId, getAssignedPlayerId]);
+
+  // ★ isMine をrefに逃がす（handleKeydown の依存配列から外すため）
+  const isMineRef = useRef(isMine);
+  useEffect(() => { isMineRef.current = isMine; }, [isMine]);
 
   useEffect(() => {
     try {
@@ -197,7 +205,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     typedCharsInSetRef.current = 0;
   }, [currentBlockIdx, isStarted, isGameOver]);
 
-  // ★ currentTime表示専用interval（150ms）— setCurrentTimeのみ担当
+  // ★ currentTime表示専用interval（150ms）
   useEffect(() => {
     const int = setInterval(() => {
       const p = playerRef.current;
@@ -213,7 +221,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   useEffect(() => {
     const int = setInterval(() => {
       if (!isStarted || isGameOver) return;
-      const ms = currentTimeMsRef.current; // ★ refから読む（postMessageなし）
+      const ms = currentTimeMsRef.current;
 
       if (endTimeMs && ms >= endTimeMs && currentBlockIdx >= mapData.displaySets.length - 1) {
         setIsGameOver(true);
@@ -226,7 +234,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         const nextBlockIdx = currentBlockIdx + 1;
         const nLines = mapData.displaySets[nextBlockIdx].lines;
 
-        // ★ refから最新のplayerIdsを取得
+        // ★ refから最新のplayerIdsを取得（Reactの再レンダリングを待たない）
         const currentPlayerIds = playerIdsRef.current;
         const firstM = nLines.findIndex(l =>
           getAssignedPlayerId(l.absLineIdx, currentPlayerIds) === playerId
@@ -241,6 +249,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             keygraph.build(firstChunk.text);
             const key = `${nLines[firstM].absLineIdx}-0`;
             preparedRef.current = key;
+            // ★ ptr送信履歴もリセット
+            lastSentPtrRef.current = -1;
+            lastSentLineRef.current = nLines[firstM].absLineIdx;
+            lastSentChunkRef.current = 0;
             setIsEngineReady(true);
           }
         } else {
@@ -292,13 +304,24 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     }
   }, [isHost, isStarted, isGameOver, roomState?.playbackTime]);
 
+  // ★ allFinished: 前回の結果をキャッシュして変化がない場合はスキップ
+  const allFinishedCacheRef = useRef<{ key: string; result: boolean }>({ key: '', result: false });
   const allFinished = useMemo(() => {
     if (!currentSet || !roomState?.players) return false;
-    return currentSet.lines.every(line => {
+    // プレイヤーの進捗に関わる値だけでキーを作る
+    const key = currentSet.lines.map(line => {
+      const pid = getAssignedPlayerId(line.absLineIdx, playerIds);
+      const u = roomState.players[pid];
+      return `${pid}:${u?.currentLineIdx ?? 'x'}`;
+    }).join('|');
+    if (key === allFinishedCacheRef.current.key) return allFinishedCacheRef.current.result;
+    const result = currentSet.lines.every(line => {
       const pid = getAssignedPlayerId(line.absLineIdx, playerIds);
       const u = roomState.players[pid];
       return u && (u.currentLineIdx === -1 || u.currentLineIdx > line.absLineIdx);
     });
+    allFinishedCacheRef.current = { key, result };
+    return result;
   }, [currentSet, roomState?.players, playerIds, getAssignedPlayerId]);
 
   const nextSet = useMemo(() => {
@@ -317,7 +340,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   useEffect(() => {
     if (!isStarted || isEngineReady || isGameOver || !currentSet || !currentLine || !isMe) return;
     const int = setInterval(() => {
-      const ms = currentTimeMsRef.current; // ★ refから読む（postMessageなし）
+      const ms = currentTimeMsRef.current;
       const targetTime = (currentLineIdx === 0) ? currentLine.timeMs : currentSet.timeMs;
       if (ms >= targetTime) {
         const key = `${currentLine.absLineIdx}-${currentChunkIdx}`;
@@ -328,6 +351,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             keygraph.build(chunk.text);
             setIsEngineReady(true);
             preparedRef.current = key;
+            // ★ ptr送信履歴をリセット
+            lastSentPtrRef.current = -1;
+            lastSentLineRef.current = currentLine.absLineIdx;
+            lastSentChunkRef.current = currentChunkIdx;
           }
         }
       }
@@ -403,24 +430,33 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
       const ptr = (keygraph as any)._seq_ptr_cur;
       const chunkNow = currentLineRef.current?.chunks?.[currentChunkIdxRef.current];
+      const absLineNow = currentLineRef.current?.absLineIdx ?? -1;
+      const chunkIdxNow = currentChunkIdxRef.current;
+
       if (chunkNow) {
-        const typed = chunkNow.text.slice(0, ptr);
-        // ★ debounce: 100ms以内の連続入力はまとめて1回だけ送信
-        if (progressDebounceRef.current) clearTimeout(progressDebounceRef.current);
-        progressDebounceRef.current = setTimeout(() => {
+        // ★ ptr・行・チャンクが前回送信と変化した時だけ送信（ミスタイプや重複をスキップ）
+        const ptrChanged = ptr !== lastSentPtrRef.current
+          || absLineNow !== lastSentLineRef.current
+          || chunkIdxNow !== lastSentChunkRef.current;
+
+        if (ptrChanged) {
+          lastSentPtrRef.current = ptr;
+          lastSentLineRef.current = absLineNow;
+          lastSentChunkRef.current = chunkIdxNow;
+          const typed = chunkNow.text.slice(0, ptr);
           updatePlayerProgress(
             roomId, playerId,
-            currentLineRef.current!.absLineIdx,
-            currentChunkIdxRef.current,
+            absLineNow,
+            chunkIdxNow,
             rs?.sharedCombo || 0,
             rs?.maxSharedCombo || 0,
             rs?.sharedScore || 0,
-            currentChunkIdxRef.current,
+            chunkIdxNow,
             ptr,
             typed,
             chunkNow.text
           ).catch(err => console.error('Character sync failed:', err));
-        }, 100);
+        }
       }
 
       const isFinished = keygraph.is_finished();
@@ -447,7 +483,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
         try { clear_sound.play(); } catch (_) { }
 
-        const nowVideoMs = currentTimeMsRef.current; // ★ refから読む
+        const nowVideoMs = currentTimeMsRef.current;
         const setStartMs = currentSet?.timeMs ?? 0;
         const nextSetMs = mapData.displaySets[currentBlockIdx + 1]?.timeMs
           ?? (endTimeMs ?? (nowVideoMs + 10000));
@@ -509,8 +545,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           }
         }
 
-        // ★ チャンク完了時はdebounceをキャンセルして即座に送信
-        if (progressDebounceRef.current) clearTimeout(progressDebounceRef.current);
+        // ★ チャンク完了時は即時送信（ptrリセット）
+        lastSentPtrRef.current = -1;
+        lastSentLineRef.current = nextLineIdxForFirebase;
+        lastSentChunkRef.current = nextChunkIdxForFirebase;
         if (roomId && playerId) {
           updatePlayerProgress(roomId, playerId, nextLineIdxForFirebase, nextChunkIdxForFirebase, 0, 0, 0, nextChunkIdxForFirebase, 0, '', '');
         }
@@ -526,7 +564,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         }
       }
     } else { try { miss_sound.play(); } catch (_) { } }
-  }, [roomId, playerId, endTimeMs, getAssignedPlayerId, isMine, mapData.displaySets]);
+  }, [roomId, playerId, endTimeMs, getAssignedPlayerId, mapData.displaySets]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeydown);
@@ -804,7 +842,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
               </div>
             </div>
 
-            {/* ★ 全体プログレスバーも150ms linearに */}
+            {/* ★ 全体プログレスバー（150ms linear補間） */}
             <div className="w-full bg-zinc-200 h-1 overflow-hidden relative footer-area">
               <div className="h-full bg-gradient-to-r from-rose-400 to-rose-500"
                 style={{
