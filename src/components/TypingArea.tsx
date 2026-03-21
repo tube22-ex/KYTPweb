@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { ParseResult } from '../services/api';
 import keygraph from '../utils/keygraph';
-import { sound, miss_sound } from '../utils/sound';
+import { sound, miss_sound, clear_sound } from '../utils/sound';
 import { updatePlayerProgress, RoomState, setRoomStartTime, getServerTimeOffset, incrementSharedScore, updateSharedCombo, updateGlobalProgress, updateRoomPlayback, determineHostId } from '../services/sync';
 import { PlayerLane } from './PlayerLane';
 
@@ -73,10 +73,12 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     try {
       sound.init();
       miss_sound.init();
+      clear_sound.init(); // ★ 追加
     } catch (e) {
       console.warn('Sound init failed:', e);
     }
   }, []);
+
 
   useEffect(() => {
     if (playerRef.current && typeof playerRef.current.setVolume === 'function') {
@@ -173,6 +175,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         setCurrentChunkIdx(0);
         setIsEngineReady(false);
         preparedRef.current = "";
+
+        // ★ ブロッククリア音
+        try { clear_sound.play(); } catch (_) { }
+
 
         const nLines = mapData.displaySets[nextBlockIdx].lines;
         const firstM = nLines.findIndex(l => isMine(l.absLineIdx));
