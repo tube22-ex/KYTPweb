@@ -28,6 +28,10 @@ const getComboMultiplier = (combo: number): number => {
 
 type JudgeResult = 'PERFECT' | 'GOOD' | 'OK' | 'BAD';
 
+// ★ 半角英数字・記号を全角に変換（ひらがなと文字幅を揃える）
+const toFullWidth = (str: string): string =>
+  str.replace(/[!-~]/g, c => String.fromCharCode(c.charCodeAt(0) + 0xFEE0));
+
 const calcJudge = (remainMs: number, intervalMs: number): JudgeResult => {
   if (intervalMs <= 0) return 'BAD';
   const ratio = remainMs / intervalMs;
@@ -132,7 +136,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       if (playerRef.current) try { playerRef.current.destroy(); } catch (e) { }
       if (!(window as any).YT || !(window as any).YT.Player) return;
       playerRef.current = new (window as any).YT.Player('youtube-player', {
-        height: '240', width: '426', videoId: mapData.videoId,
+        height: '180', width: '320', videoId: mapData.videoId,
         playerVars: { autoplay: 0, controls: 0, disablekb: 1, modestbranding: 1, rel: 0, origin: window.location.origin, enablejsapi: 1 },
         events: {
           onReady: (e: any) => {
@@ -140,6 +144,17 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             playerRef.current = e.target;
             try { e.target.setVolume(volume); } catch (err) { }
             setVideoDuration(e.target.getDuration());
+            // ★ YouTubeが生成したiframeを直接スタイル制御して黒帯を除去
+            const iframe = e.target.getIframe();
+            if (iframe) {
+              iframe.style.position = 'absolute';
+              iframe.style.top = '50%';
+              iframe.style.left = '50%';
+              iframe.style.width = '320px';
+              iframe.style.height = '180px';
+              iframe.style.transform = 'translate(-50%, -50%)';
+              iframe.style.border = 'none';
+            }
             const start = roomState?.startTime;
             if (start) getServerTimeOffset().then(off => {
               const sec = (Date.now() + off - start) / 1000;
@@ -684,7 +699,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
         {!isGameOver && (
           <div className="w-full flex flex-col gap-0">
-            <div className="lyrics-area scrollbar-hide" ref={lyricsAreaRef} data-typing-progress={inputCount}>
+            <div className="lyrics-area scrollbar-hide" ref={lyricsAreaRef} data-typing-progress={inputCount} style={{ fontSize: '1.6em' }}>
               {currentSet?.lines.map((line: any, idx: number) => {
                 const globalLineIdx = roomState?.globalLineIdx ?? 0;
                 const nowMs = currentTimeMsRef.current;
@@ -741,7 +756,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                             let className = '';
                             if (isCharFinished) className = 'opacity-30';
                             else if (isPreStart) className = 'opacity-0';
-                            return <span key={charIdx} className={className}>{char.toUpperCase()}</span>;
+                            return <span key={charIdx} className={className}>{toFullWidth(char)}</span>;
                           })}
                           {cIdx < line.chunks.length - 1 && '　'}
                         </span>
@@ -752,7 +767,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
               })}
             </div>
 
-            <div className="w-full flex flex-col relative overflow-hidden border-b-4 border-white/10 target-bar"
+            <div className="w-full flex flex-col relative overflow-hidden target-bar shrink-0"
               style={{ backgroundColor: roomState?.players?.[playerId]?.color || '#fb7185' }}>
               {isStarted && !isGameOver && (() => {
                 const myColor = roomState?.players?.[playerId]?.color ?? '#ffffff';
@@ -765,8 +780,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 else { start = line.timeMs; end = setEnd; }
                 const progress = Math.max(0, Math.min(100, (now - start) / Math.max(1, end - start) * 100));
                 return (
-                  <div className="w-full h-4 bg-black/20">
-                    {/* ★ transition で150msポーリングのカク付きを補間 */}
+                  <div className="w-full h-4 bg-black/20 flex-shrink-0">
                     <div className="h-full"
                       style={{
                         backgroundColor: myColor,
@@ -777,12 +791,12 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                   </div>
                 );
               })()}
-              <div className="flex-1 flex items-center justify-between px-10">
-                <div className="flex flex-col items-start leading-none mt-1">
-                  <span className="text-[12px] font-black text-rose-100 uppercase italic">Target</span>
-                  <span className="text-sm font-black text-white italic">{isMe ? '打って！' : '待機'}</span>
+              <div className="flex items-center justify-between px-6 py-0">
+                <div className="flex flex-col items-start leading-none" style={{ gap: 0 }}>
+                  <span className="text-[9px] font-black text-rose-100 uppercase italic leading-none">Target</span>
+                  <span className="text-xs font-black text-white italic leading-none">{isMe ? '打って！' : '待機'}</span>
                 </div>
-                <div className="flex-1 flex items-center justify-start pl-10">
+                <div className="flex-1 flex items-center justify-start pl-6">
                   {isEngineReady && isMe ? (
                     <div className="flex items-center gap-2">
                       <span className="text-3xl font-black italic tracking-wider drop-shadow-lg">
@@ -796,10 +810,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                     </div>
                   )}
                 </div>
-                <div className="flex flex-col items-end leading-none mt-1">
-                  <span className="text-[10px] font-black text-rose-100 uppercase italic text-right tracking-widest">Combo</span>
-                  <div key={comboAnimKey} className="flex items-baseline gap-1 combo-pop">
-                    <div className="text-4xl font-black italic text-white leading-none">{currentCombo}</div>
+                <div className="flex flex-col items-end" style={{ gap: 0 }}>
+                  <span className="text-[8px] font-black text-rose-100 uppercase italic text-right tracking-widest leading-none">Combo</span>
+                  <div key={comboAnimKey} className="flex items-baseline gap-0.5 combo-pop">
+                    <div className="text-xl font-black italic text-white leading-none">{currentCombo}</div>
                     {multiplier > 1 && (
                       <div key={`mult-${multiplier}`}
                         className="text-sm font-black italic leading-none px-1.5 py-0.5 rounded-full animate-bounce"
@@ -816,25 +830,41 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 </div>
               </div>
             </div>
-
             <div className="w-full flex shrink-0 score-video-area">
-              <div className="flex-1 min-w-0 p-3 flex flex-col items-center justify-center bubble-bg bg-[#fff5f8] border-r-2 border-rose-200 overflow-visible">
+              <div className="flex-1 min-w-0 p-2 flex flex-col items-center justify-center bubble-bg bg-[#fff5f8] border-r-2 border-rose-200">
                 <span className="font-black uppercase tracking-widest mb-0.5 score-label" style={{ color: '#1a1a1a', opacity: 1, textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>合計スコア</span>
                 <div className="font-black tracking-tighter shrink-0 score-value" style={{ color: '#1a1a1a', textShadow: '0 2px 4px rgba(0,0,0,0.2)', opacity: 1 }}>{scoreText}</div>
               </div>
+              {/* ★ overflow:hiddenでiframeをクロップして黒帯を除去 */}
               <div
-                className="flex-[0_0_auto] w-[391px] h-full bg-black relative group border-x-2 border-white/10 flex flex-col items-center justify-center shrink-0"
-                style={{ visibility: hideVideo ? 'hidden' : 'visible' }}
+                className="flex-[0_0_auto] h-full relative shrink-0"
+                style={{
+                  width: '320px',
+                  overflow: 'hidden',
+                  backgroundColor: '#fff5f8',
+                  visibility: hideVideo ? 'hidden' : 'visible'
+                }}
               >
-                <div id='youtube-player' className="w-full h-full" />
+                <div
+                  id="youtube-player"
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    width: '320px',
+                    height: '180px',
+                    transform: 'translate(-50%, -50%)',
+                    border: 'none',
+                  }}
+                />
               </div>
-              <div className="flex-1 min-w-0 p-3 flex flex-col justify-between bubble-bg bg-white overflow-y-auto">
-                <div className="flex flex-col">
-                  <span className="text-[12px] font-black text-rose-300 uppercase italic">再生中</span>
-                  <div className="text-2xl font-black text-zinc-700 truncate mt-0.5 tracking-tighter italic">{mapData.title || 'Unknown Stage'}</div>
-                  <div className="text-sm font-bold text-zinc-400 truncate mt-1">{mapData.artist || 'Unknown Artist'}</div>
+              <div className="flex-1 min-w-0 p-2 flex flex-col justify-between bubble-bg bg-white overflow-hidden">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] font-black text-rose-300 uppercase italic">再生中</span>
+                  <div className="text-sm font-black text-zinc-700 tracking-tighter italic break-words leading-tight">{mapData.title || 'Unknown Stage'}</div>
+                  <div className="text-xs font-bold text-zinc-400 break-words">{mapData.artist || 'Unknown Artist'}</div>
                 </div>
-                <div className="flex gap-2 mt-4">
+                <div className="flex gap-2">
                   <button onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) { } onBackToMenu(); }}
                     className="flex-1 bg-rose-400 text-white font-black rounded-none hover:bg-rose-500 shadow-sm transition-colors menu-button">MENU</button>
                   <button className="flex-1 bg-white border border-zinc-100 text-zinc-400 font-black rounded-none hover:bg-zinc-50 transition-colors help-button">ヘルプ</button>

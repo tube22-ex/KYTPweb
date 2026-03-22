@@ -279,11 +279,13 @@ h3,
   height: 48px;
   width: 24px;
   background: white;
-  border: 1px solid #fee2e2; /* rose-100 */
+  border: 1px solid #fee2e2;
+  /* rose-100 */
   align-items: center;
   justify-content: center;
-  color: #fda4af; /* rose-300 */
-  box-shadow: 2px 0 10px rgba(0,0,0,0.02);
+  color: #fda4af;
+  /* rose-300 */
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.02);
   border-left: none;
   border-top-right-radius: 4px;
   border-bottom-right-radius: 4px;
@@ -291,8 +293,10 @@ h3,
 }
 
 .history-toggle-btn:hover {
-  background: #fff1f2; /* rose-50 */
-  color: #f43f5e; /* rose-500 */
+  background: #fff1f2;
+  /* rose-50 */
+  color: #f43f5e;
+  /* rose-500 */
 }
 
 .layout-root {
@@ -475,6 +479,7 @@ h3,
   border-left-style: solid !important;
   margin: 4px 0 !important;
   font-size: 20px !important;
+  /*フォントサイズ調整*/
   font-weight: 700 !important;
   line-height: 1.6 !important;
 }
