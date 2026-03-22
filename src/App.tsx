@@ -82,7 +82,9 @@ export default function App() {
   }, [activeBlockIdx, showGuide]);
 
   // フォント設定
-  const [selectedFont, setSelectedFont] = useState("'M PLUS Rounded 1c', sans-serif");
+  const [selectedFont, setSelectedFont] = useState(() => {
+    return localStorage.getItem('kytp_font') || "'Noto Sans Mono', monospace";
+  });
 
   // 画面スケーリング処理
   useEffect(() => {
@@ -112,7 +114,9 @@ export default function App() {
     return saved ? Number(saved) : 50;
   });
 
-  const [hideVideo, setHideVideo] = useState(false);
+  const [hideVideo, setHideVideo] = useState(() => {
+    return localStorage.getItem('kytp_hide_video') === 'true';
+  });
   useEffect(() => {
     localStorage.setItem('kytp_volume', volume.toString());
     (window as any).typeVolume = volume / 100;
@@ -124,6 +128,14 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('kytp_player_name', playerName);
   }, [playerName]);
+
+  useEffect(() => {
+    localStorage.setItem('kytp_hide_video', hideVideo.toString());
+  }, [hideVideo]);
+
+  useEffect(() => {
+    localStorage.setItem('kytp_font', selectedFont);
+  }, [selectedFont]);
 
 
 
@@ -335,8 +347,8 @@ export default function App() {
       >
         <div className={`left-column relative h-full flex flex-row items-start ${showHistory ? 'has-history' : ''}`} style={{ flexShrink: 0 }}>
           <aside className={`relative flex flex-col h-full transition-all duration-200 ease-out overflow-hidden ${showHistory ? 'open' : ''}`}
-            style={{ flexShrink: 0, width: showHistory ? '130px' : '0px' }}>
-            <div className="w-[130px] flex flex-col h-full pr-1">
+            style={{ flexShrink: 0, width: showHistory ? '196px' : '0px' }}>
+            <div className="w-[196px] flex flex-col h-full pr-1">
               <div className="flex items-center justify-between mb-3 ml-1 flex-shrink-0 pt-3">
                 <div className="flex items-center gap-1.5">
                   <div className="w-1.5 h-3 bg-rose-400 rounded-full"></div>

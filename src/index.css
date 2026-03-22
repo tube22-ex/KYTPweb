@@ -250,8 +250,8 @@ h3,
 }
 
 .left-column.has-history {
-  width: 154px !important;
-  min-width: 154px !important;
+  width: 220px !important;
+  min-width: 220px !important;
 }
 
 .left-column aside {
@@ -260,7 +260,7 @@ h3,
 }
 
 .left-column aside.open {
-  width: 130px;
+  width: 196px;
 }
 
 /* トグルボタンの配置（絶対配置でサイドバーの右端に固定） */
@@ -479,7 +479,6 @@ h3,
   border-left-style: solid !important;
   margin: 4px 0 !important;
   font-size: 20px !important;
-  /*フォントサイズ調整*/
   font-weight: 700 !important;
   line-height: 1.6 !important;
 }
