@@ -158,7 +158,8 @@ h3,
   background-color: #1a1a1a;
   background-image: linear-gradient(to bottom, #111 0%, #2a2a2a 65%);
   position: relative;
-  overflow: hidden;
+  /* overflow: hidden を外して、たらいアニメーションがクリッピングされるのを防ぐ */
+  overflow: visible;
   box-shadow: inset 0 20px 50px rgba(0, 0, 0, 0.9);
 }
 
@@ -455,8 +456,10 @@ h3,
   min-height: 250px !important;
   max-height: 250px !important;
   flex-shrink: 0 !important;
-  overflow: hidden !important;
+  /* overflow: hidden を外してたらい落下アニメーションがステージ上端より上から見えるようにする */
+  overflow: visible !important;
 }
+
 
 .center-column .lyrics-area {
   height: 150px !important;
@@ -528,4 +531,113 @@ h3,
 
 header {
   height: 20px;
+}
+
+/* ★ たらい落下アニメーション */
+@keyframes taraiFall {
+  0% {
+    transform: translateX(-50%) translateY(-180px) rotate(-15deg) scale(1.1);
+    opacity: 1;
+  }
+
+  25% {
+    transform: translateX(-50%) translateY(0px) rotate(8deg) scale(1.05);
+    opacity: 1;
+  }
+
+  45% {
+    transform: translateX(-50%) translateY(-30px) rotate(-5deg) scale(0.98);
+    opacity: 1;
+  }
+
+  65% {
+    transform: translateX(-50%) translateY(0px) rotate(3deg) scale(1.02);
+    opacity: 1;
+  }
+
+  85% {
+    transform: translateX(-50%) translateY(-10px) rotate(-1deg) scale(1);
+    opacity: 0.8;
+  }
+
+  100% {
+    transform: translateX(-50%) translateY(20px) rotate(0deg) scale(0.9);
+    opacity: 0;
+  }
+}
+
+.tarai-drop {
+  animation: taraiFall 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
+  pointer-events: none;
+}
+
+/* ★ BAD判定時のプレイヤーシェイク */
+@keyframes badShake {
+  0% {
+    transform: translateX(0);
+  }
+
+  10% {
+    transform: translateX(-12px) rotate(-5deg);
+  }
+
+  20% {
+    transform: translateX(12px) rotate(5deg);
+  }
+
+  30% {
+    transform: translateX(-10px) rotate(-4deg);
+  }
+
+  40% {
+    transform: translateX(10px) rotate(4deg);
+  }
+
+  50% {
+    transform: translateX(-8px) rotate(-3deg);
+  }
+
+  60% {
+    transform: translateX(8px) rotate(3deg);
+  }
+
+  70% {
+    transform: translateX(-5px) rotate(-2deg);
+  }
+
+  80% {
+    transform: translateX(5px) rotate(2deg);
+  }
+
+  90% {
+    transform: translateX(-2px) rotate(-1deg);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.bad-shake {
+  /* 1.2s のあとの 0.2s が「遅延（揺れ始めるまでの待機時間）」です。自由に微調整してください！ */
+  animation: badShake 1.2s cubic-bezier(.36, .07, .19, .97) 0.1s both !important;
+}
+
+
+/* ★ BAD判定ポップ */
+@keyframes badJudgeIn {
+  0% {
+    transform: scale(0.5) rotate(-10deg);
+    opacity: 0;
+  }
+
+  60% {
+    transform: scale(1.2) rotate(4deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
 }

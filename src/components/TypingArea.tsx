@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { ParseResult } from '../services/api';
 import keygraph from '../utils/keygraph';
-import { sound, miss_sound, clear_sound } from '../utils/sound';
+import { sound, miss_sound, clear_sound, bad_sound } from '../utils/sound';
 import { updatePlayerProgress, updatePlayerSpeedSamples, RoomState, setRoomStartTime, getServerTimeOffset, incrementSharedScore, updateSharedCombo, updateGlobalProgress, updateRoomPlayback, determineHostId } from '../services/sync';
 import { PlayerLane } from './PlayerLane';
 
@@ -60,6 +60,12 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const [judgeResult, setJudgeResult] = useState<JudgeResult | null>(null);
   const [judgeChunkKey, setJudgeChunkKey] = useState<string | null>(null);
   const judgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ★ たらい演出 / BADシェイク演出
+  const [taraiPlayers, setTaraiPlayers] = useState<Set<string>>(new Set());
+  const [badShakePlayers, setBadShakePlayers] = useState<Set<string>>(new Set());
+  const taraiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const badShakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const measureStartTimeRef = useRef<number | null>(null);
   const setTotalCharsRef = useRef<number>(0);
@@ -236,31 +242,43 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     return () => clearInterval(int);
   }, [isStarted, isGameOver]);
 
-  // ★ ブロック切り替え＆ゲーム終了監視（50ms）— currentTimeMsRefから読む
+  // ★ ブロック切り替え＆ゲームオーバー監視（50ms）
   useEffect(() => {
+    if (!isStarted || isGameOver || !mapData.displaySets) return;
     const int = setInterval(() => {
-      if (!isStarted || isGameOver) return;
       const ms = currentTimeMsRef.current;
-
-      if (endTimeMs && ms >= endTimeMs && currentBlockIdx >= mapData.displaySets.length - 1) {
-        setIsGameOver(true);
-        try { playerRef.current?.stopVideo(); } catch (e) { }
-        return;
-      }
-
-      const ns = mapData.displaySets?.[currentBlockIdx + 1];
+      const ns = nextSetRef.current;
+      const isEnd = endTimeMs != null && ms >= endTimeMs;
+      if (isEnd && !isGameOver) { setIsGameOver(true); return; }
       if (ns && ms >= ns.timeMs) {
+        // ==========================================
+        // 【1. Buzzer Snapshot】 変数をリセットする前の「今の状態」を保存
+        // ==========================================
+        const snap_prevBlockIdx = currentBlockIdx;
+        const snap_currentLines = mapData.displaySets[snap_prevBlockIdx].lines;
+        const snap_rs = roomStateRef.current;
+        const snap_gl = snap_rs?.globalLineIdx ?? 0;
+        const snap_gc = snap_rs?.globalChunkIdx ?? 0;
+        const snap_playerIds = playerIdsRef.current; // 判定中の配役を固定
+
+        // 自分の進捗はリセット前のローカル記録（lastSentLineRef）をコピー
+        const snap_myAbsLineIdx = lastSentLineRef.current;
+        const snap_myChunkIdx = lastSentChunkRef.current;
+        const lLineOfEndBlock = snap_currentLines[snap_currentLines.length - 1];
+
+        // ==========================================
+        // 【2. Next Block Preparation】 次のセットに向けた変数更新
+        // ==========================================
         const nextBlockIdx = currentBlockIdx + 1;
         const nLines = mapData.displaySets[nextBlockIdx].lines;
 
-        // ★ refから最新のplayerIdsを取得（Reactの再レンダリングを待たない）
-        const currentPlayerIds = playerIdsRef.current;
+        // ★ 次のセットにおける自分の担当行を探す
         const firstM = nLines.findIndex(l =>
-          getAssignedPlayerId(l.absLineIdx, currentPlayerIds) === playerId
+          getAssignedPlayerId(l.absLineIdx, snap_playerIds) === playerId
         );
         const newLocalLineIdx = firstM !== -1 ? firstM : 0;
 
-        // ★ ブロック切り替えと同時にエンジンを即起動
+        // ★ エンジン・タイピング状態の初期化
         if (firstM !== -1) {
           const firstChunk = nLines[firstM].chunks?.[0];
           if (firstChunk) {
@@ -268,7 +286,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             keygraph.build(firstChunk.text);
             const key = `${nLines[firstM].absLineIdx}-0`;
             preparedRef.current = key;
-            // ★ ptr送信履歴もリセット
+            // リセット
             lastSentPtrRef.current = -1;
             lastSentLineRef.current = nLines[firstM].absLineIdx;
             lastSentChunkRef.current = 0;
@@ -277,30 +295,105 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         } else {
           setIsEngineReady(false);
           preparedRef.current = "";
+          // 担当がない場合も、一応Refは更新（判定バグ防止）
+          lastSentLineRef.current = -1;
+          lastSentChunkRef.current = 0;
         }
 
+        // UI表示を次へ進める
         setCurrentBlockIdx(nextBlockIdx);
         setCurrentLineIdx(newLocalLineIdx);
         setCurrentChunkIdx(0);
 
-        if (roomId && playerId) {
-          const absStart = firstM !== -1 ? nLines[firstM].absLineIdx : -1;
-          updatePlayerProgress(roomId, playerId, absStart, 0, 0, 0, 0, 0, 0, '', '');
-        }
+        // ==========================================
+        // 【3. Delayed Final Judgment】
+        // ==========================================
+        setTimeout(() => {
+          const latestRs = roomStateRef.current;
 
-        if (isHost) {
-          const currentGl = roomStateRef.current?.globalLineIdx ?? 0;
-          const currentGc = roomStateRef.current?.globalChunkIdx ?? 0;
-          const currentLines = mapData.displaySets[currentBlockIdx].lines;
-          const lastLine = currentLines[currentLines.length - 1];
-          const lastLineFinished = lastLine && (currentGl > lastLine.absLineIdx || (currentGl === lastLine.absLineIdx && currentGc >= lastLine.chunks.length));
-          if (!lastLineFinished) {
-            blockChangingRef.current = true; // ★ セット切替由来の0リセットを除外
-            updateSharedCombo(roomId, 0, roomStateRef.current?.maxSharedCombo || 0);
-            updateGlobalProgress(roomId, nLines[0]?.absLineIdx ?? currentGl + 1, 0);
-            setTimeout(() => { blockChangingRef.current = false; }, 500);
+          // 全体の成否判定：滑り込み更新も考慮
+          const final_gl = latestRs?.globalLineIdx ?? snap_gl;
+          const final_gc = latestRs?.globalChunkIdx ?? snap_gc;
+          const blockFinishedByAny = lLineOfEndBlock && (final_gl > lLineOfEndBlock.absLineIdx || (final_gl === lLineOfEndBlock.absLineIdx && final_gc >= lLineOfEndBlock.chunks.length));
+
+          if (!blockFinishedByAny) {
+            console.log(`[Judgement] Failure Triggered for Block ${snap_prevBlockIdx}. Checking who failed...`);
+            const unfinishedPlayerIds = new Set<string>();
+
+            // 次ブロックの最初の行インデックス（これ以上なら前ブロック完了済みとみなす）
+            const nextBlockFirstAbsIdx = nLines[0]?.absLineIdx ?? Infinity;
+
+            if (latestRs && latestRs.players) {
+              Object.values(latestRs.players).forEach(p => {
+                // 固定したスナップショット時の名簿で判定
+                const myLines = snap_currentLines.filter(l => getAssignedPlayerId(l.absLineIdx, snap_playerIds) === p.id);
+                if (myLines.length === 0) return;
+
+                // 自分ならスナップショット、他人はFirebaseの最新同期値
+                const isMe = p.id === playerId;
+                const curL = isMe ? snap_myAbsLineIdx : p.currentLineIdx;
+                const curC = isMe ? snap_myChunkIdx : p.currentChunkIdx;
+
+                // ★ curL=-1 は「全担当行を打ち終えた完了状態」または「ブロック切替センチネル」→ ALL CLEAR
+                // ★ 次ブロックの先頭行以降にいる場合も前ブロック完了済みとみなす
+                if (curL === -1 || curL >= nextBlockFirstAbsIdx) {
+                  console.log(`  - Checking ${p.name}(${p.id.slice(0, 4)}): Progress=${curL}-${curC} → 完了済み/次ブロック到達済み (ALL CLEAR)`);
+                  return;
+                }
+
+                console.log(`  - Checking ${p.name}(${p.id.slice(0, 4)}): Progress=${curL}-${curC}, SetLines=[${myLines.map(m => m.absLineIdx).join(',')}]`);
+
+                const allDone = myLines.every(l => {
+                  const isPastLine = curL > l.absLineIdx;
+                  const isAtLineDone = (curL === l.absLineIdx && curC >= l.chunks.length);
+                  const lineDone = isPastLine || isAtLineDone;
+
+                  console.log(`      * LineAbsIdx ${l.absLineIdx}: ${lineDone ? 'DONE' : 'FAILED'} (isPast:${isPastLine}, isAtDone:${isAtLineDone}, curC:${curC}, reqC:${l.chunks.length})`);
+                  return lineDone;
+                });
+
+                console.log(`    => Result for ${p.name}: ${allDone ? 'ALL CLEAR' : 'PENALTY'}`);
+                if (!allDone) unfinishedPlayerIds.add(p.id);
+              });
+            }
+
+            if (unfinishedPlayerIds.size > 0) {
+              setTaraiPlayers(unfinishedPlayerIds);
+              setBadShakePlayers(unfinishedPlayerIds);
+              if (taraiTimerRef.current) clearTimeout(taraiTimerRef.current);
+              if (badShakeTimerRef.current) clearTimeout(badShakeTimerRef.current);
+              taraiTimerRef.current = setTimeout(() => setTaraiPlayers(new Set()), 1500);
+              badShakeTimerRef.current = setTimeout(() => setBadShakePlayers(new Set()), 1500);
+
+              setTimeout(() => {
+                try {
+                  const audio = new Audio('/sound/tarai.mp3');
+                  audio.volume = typeof (window as any).clearVolume !== 'undefined' ? (window as any).clearVolume : 1.0;
+                  audio.play();
+                } catch (_) { }
+              }, 200);
+            }
+
+            // ホストのみ：失敗した場合はコンボリセット
+            if (isHost) {
+              blockChangingRef.current = true;
+              updateSharedCombo(roomId, 0, latestRs?.maxSharedCombo || 0);
+              updateGlobalProgress(roomId, nLines[0]?.absLineIdx ?? (final_gl + 1), 0);
+              setTimeout(() => { blockChangingRef.current = false; }, 500);
+            }
+          } else {
+            console.log(`[Judgement] Block ${snap_prevBlockIdx} was successfully finished in time (by someone).`);
           }
-        }
+
+          // 【Judgment完了後】Firebase に「前ブロック完了」センチネル(-1)を送信する。
+          // absStart（次ブロック担当行）を送ると、相手クライアントの判定で
+          // curL===absLineIdx かつ curC=0 < reqC となりPENALTYに誤判定されるため。
+          // 実際の次ブロック行番号はエンジン起動後の最初のキー入力時に送信される。
+          if (roomId && playerId) {
+            updatePlayerProgress(roomId, playerId, -1, 0, 0, 0, 0, 0, 0, '', '');
+          }
+        }, 150);
+
       }
     }, 50);
     return () => clearInterval(int);
@@ -526,8 +619,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         const charsPerSec = typedChars / Math.max(elapsedSec, 0.1);
         const speedMult = charsPerSec / 5;
 
-        try { clear_sound.play(); } catch (_) { }
-
         const nowVideoMs = currentTimeMsRef.current;
         const setStartMs = currentSet?.timeMs ?? 0;
         const nextSetMs = mapData.displaySets[currentBlockIdx + 1]?.timeMs
@@ -537,6 +628,13 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         const judge = calcJudge(remainMs, intervalMs);
         const chunkKey = `${currentLine.absLineIdx}-${currentChunkIdx}`;
         showJudge(judge, chunkKey);
+
+        // ★ BAD判定の場合はbad_soundを鳴らす、それ以外はclear_sound
+        if (judge === 'BAD') {
+          try { bad_sound.play(); } catch (_) { }
+        } else {
+          try { clear_sound.play(); } catch (_) { }
+        }
 
         const perfectBonus = judge === 'PERFECT' ? 5 : 0;
         const addScore = Math.round(10 * mult * speedMult) + perfectBonus;
@@ -574,8 +672,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             nextChunkIdxForFirebase = 0;
             nextChunkToBuild = currentSet!.lines[nextM].chunks[0];
           } else {
+            // ★ 全ての担当行を終えた場合、判定用に「最後の行の次」をセット
+            const lastAbsIdx = currentLine.absLineIdx;
             setCurrentLineIdx(-1);
-            nextLineIdxForFirebase = -1;
+            nextLineIdxForFirebase = lastAbsIdx + 1;
             nextChunkIdxForFirebase = 0;
 
             const finalElapsedSec = measureStartTimeRef.current
@@ -719,7 +819,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       <div className="w-full border-4 border-white rounded-none bg-white/5 backdrop-blur-sm p-0 flex flex-col h-full overflow-hidden">
 
         <div className="w-full bg-white/10 border-b-2 border-white/20 flex-shrink-0 stage-container" style={{ position: 'relative' }}>
-          <PlayerLane roomState={roomState} playerId={playerId} />
+          <PlayerLane roomState={roomState} playerId={playerId} taraiPlayers={taraiPlayers} badShakePlayers={badShakePlayers} />
 
           {/* ★ ビッグコンボ表示 */}
           {bigComboVisible && (

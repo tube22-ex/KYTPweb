@@ -53,4 +53,38 @@ const miss_sound = {
 	},
 };
 
-export { sound, clear_sound, miss_sound };
+const bad_sound = {
+	play: () => {
+		try {
+			const ctx = new (window.AudioContext || window.webkitAudioContext)();
+			// たらいが落ちるような「ゴーン」「ボスッ」系の低音
+			const osc = ctx.createOscillator();
+			const gainNode = ctx.createGain();
+			osc.connect(gainNode);
+			gainNode.connect(ctx.destination);
+			osc.type = 'sawtooth';
+			osc.frequency.setValueAtTime(180, ctx.currentTime);
+			osc.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 0.3);
+			gainNode.gain.setValueAtTime(0.0, ctx.currentTime);
+			gainNode.gain.linearRampToValueAtTime(0.55, ctx.currentTime + 0.02);
+			gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+			osc.start(ctx.currentTime);
+			osc.stop(ctx.currentTime + 0.5);
+			// 2発目：金属的な高音をわずかに重ねる
+			const osc2 = ctx.createOscillator();
+			const gain2 = ctx.createGain();
+			osc2.connect(gain2);
+			gain2.connect(ctx.destination);
+			osc2.type = 'square';
+			osc2.frequency.setValueAtTime(600, ctx.currentTime);
+			osc2.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.25);
+			gain2.gain.setValueAtTime(0.25, ctx.currentTime);
+			gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+			osc2.start(ctx.currentTime);
+			osc2.stop(ctx.currentTime + 0.25);
+			setTimeout(() => { try { ctx.close(); } catch (_) {} }, 800);
+		} catch (e) { }
+	},
+};
+
+export { sound, clear_sound, miss_sound, bad_sound };
