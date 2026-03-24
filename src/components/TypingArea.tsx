@@ -49,6 +49,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const [isEngineReady, setIsEngineReady] = useState(false);
   const [comboAnimKey, setComboAnimKey] = useState(0);
   const [inputCount, setInputCount] = useState(0);
+  // ★ ビッグコンボ表示用
+  const [bigComboValue, setBigComboValue] = useState(0);
+  const [bigComboVisible, setBigComboVisible] = useState(false);
+  const bigComboTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [playerState, setPlayerState] = useState<number>(-1);
@@ -291,8 +295,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           const lastLine = currentLines[currentLines.length - 1];
           const lastLineFinished = lastLine && (currentGl > lastLine.absLineIdx || (currentGl === lastLine.absLineIdx && currentGc >= lastLine.chunks.length));
           if (!lastLineFinished) {
+            blockChangingRef.current = true; // ★ セット切替由来の0リセットを除外
             updateSharedCombo(roomId, 0, roomStateRef.current?.maxSharedCombo || 0);
             updateGlobalProgress(roomId, nLines[0]?.absLineIdx ?? currentGl + 1, 0);
+            setTimeout(() => { blockChangingRef.current = false; }, 500);
           }
         }
       }
@@ -413,6 +419,24 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     }, 1000);
   };
 
+  // ★ コンボ途切れ検知
+  const prevComboRef = useRef<number>(0);
+  const blockChangingRef = useRef<boolean>(false); // セット切替中はコンボ途切れ音を鳴らさない
+
+  useEffect(() => {
+    const currentCombo = roomState?.sharedCombo ?? 0;
+    if (prevComboRef.current > 0 && currentCombo === 0 && !blockChangingRef.current) {
+      try {
+        const breakAudio = new Audio('/sounds/combo_break.mp3');
+        breakAudio.volume = typeof (window as any).clearVolume !== 'undefined'
+          ? (window as any).clearVolume : 1.0;
+        breakAudio.play();
+      } catch (_) { }
+    }
+    prevComboRef.current = currentCombo;
+  }, [roomState?.sharedCombo]);
+
+
   const handleKeydown = useCallback((e: KeyboardEvent) => {
     const _canSkip = canSkipRef.current;
     const _nextSet = nextSetRef.current;
@@ -477,6 +501,12 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       const isFinished = keygraph.is_finished();
       if (isFinished) {
         setComboAnimKey(k => k + 1);
+        // ★ ビッグコンボ表示
+        const newCombo = (roomStateRef.current?.sharedCombo || 0) + 1;
+        setBigComboValue(newCombo);
+        setBigComboVisible(true);
+        if (bigComboTimerRef.current) clearTimeout(bigComboTimerRef.current);
+        bigComboTimerRef.current = setTimeout(() => setBigComboVisible(false), 1200);
         const comboAfterIncrement = (rs?.sharedCombo || 0) + 1;
         const mult = getComboMultiplier(comboAfterIncrement);
 
@@ -519,8 +549,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           let nl = currentLine.absLineIdx, nc = currentChunkIdx + 1;
           if (nc >= currentLine.chunks.length) { nl++; nc = 0; }
           updateGlobalProgress(roomId, nl, nc);
-        } else {
-          updateSharedCombo(roomId, 0, rs?.maxSharedCombo || 0);
         }
 
         let nextLineIdxForFirebase = currentLine.absLineIdx;
@@ -646,6 +674,41 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     return result;
   }, [roomState?.players]);
 
+  // ★ 他プレイヤーのチャンク完了を検知して判定表示と打ち切り音を鳴らす
+  const prevOtherPlayersProgressRef = useRef<Record<string, { lineIdx: number; chunkIdx: number }>>({});
+
+  useEffect(() => {
+    if (!roomState?.players || !isStarted || isGameOver) return;
+    for (const [pid, p] of Object.entries(roomState.players)) {
+      if (pid === playerId) continue;
+      const prev = prevOtherPlayersProgressRef.current[pid];
+      const curr = { lineIdx: p.currentLineIdx, chunkIdx: p.currentChunkIdx };
+      if (prev) {
+        const advanced =
+          (curr.lineIdx > prev.lineIdx) ||
+          (curr.lineIdx === prev.lineIdx && curr.chunkIdx > prev.chunkIdx) ||
+          (curr.lineIdx === -1 && prev.lineIdx !== -1);
+        if (advanced) {
+          try { clear_sound.play(); } catch (_) { }
+          // ビッグコンボ表示
+          const newCombo = (roomStateRef.current?.sharedCombo || 0) + 1;
+          setBigComboValue(newCombo);
+          setBigComboVisible(true);
+          if (bigComboTimerRef.current) clearTimeout(bigComboTimerRef.current);
+          bigComboTimerRef.current = setTimeout(() => setBigComboVisible(false), 1200);
+          // 判定表示
+          const completedChunkKey = `${prev.lineIdx}-${prev.chunkIdx}`;
+          const nowVideoMs = currentTimeMsRef.current;
+          const setStartMs = currentSetRef.current?.timeMs ?? 0;
+          const nextSetMs = mapData.displaySets[currentBlockIdxRef.current + 1]?.timeMs
+            ?? (endTimeMs ?? (nowVideoMs + 10000));
+          showJudge(calcJudge(nextSetMs - nowVideoMs, nextSetMs - setStartMs), completedChunkKey);
+        }
+      }
+      prevOtherPlayersProgressRef.current[pid] = curr;
+    }
+  }, [roomState?.players, isStarted, isGameOver, playerId, endTimeMs, mapData.displaySets]);
+
   if (!mapData || !mapData.displaySets || mapData.displaySets.length === 0 || !currentSet) return <div>Loading...</div>;
   const scoreText = (roomState?.sharedScore || 0).toString().padStart(6, '0');
   const currentCombo = roomState?.sharedCombo || 0;
@@ -657,6 +720,30 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
         <div className="w-full bg-white/10 border-b-2 border-white/20 flex-shrink-0 stage-container" style={{ position: 'relative' }}>
           <PlayerLane roomState={roomState} playerId={playerId} />
+
+          {/* ★ ビッグコンボ表示 */}
+          {bigComboVisible && (
+            <div style={{
+              position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              pointerEvents: 'none', zIndex: 50,
+            }}>
+              <div key={bigComboValue} style={{
+                fontFamily: "'M PLUS Rounded 1c', sans-serif",
+                fontSize: 'clamp(30px, 5vw, 60px)',
+                fontWeight: 900,
+                fontStyle: 'italic',
+                color: '#fff',
+                lineHeight: 1,
+                letterSpacing: '-0.04em',
+                textShadow: '0 0 30px rgba(255,200,0,0.8), 0 0 60px rgba(255,100,0,0.6), 3px 3px 0 rgba(0,0,0,0.4)',
+                WebkitTextStroke: '2px rgba(255,150,0,0.8)',
+                animation: 'bigComboIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+              }}>
+                Combo {bigComboValue}
+              </div>
+            </div>
+          )}
           {!isGameOver && !isStarted && (
             <div style={{
               position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
@@ -942,6 +1029,12 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           0%   { transform: scale(0.4) translateY(12px); opacity: 0; }
           60%  { transform: scale(1.2) translateY(-4px); opacity: 1; }
           100% { transform: scale(1)   translateY(0);    opacity: 1; }
+        }
+        @keyframes bigComboIn {
+          0%   { transform: scale(0.3) translateY(20px); opacity: 0; }
+          60%  { transform: scale(1.15) translateY(-8px); opacity: 1; }
+          80%  { transform: scale(0.95) translateY(0); opacity: 1; }
+          100% { transform: scale(1) translateY(0); opacity: 1; }
         }
       `}</style>
     </div>

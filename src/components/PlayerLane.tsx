@@ -79,8 +79,7 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId }) =
 
         <div className="relative flex flex-col items-center justify-end z-20">
           {/* 上段 */}
-          <div className={`flex items-end justify-center px-4 gap-${useGrid ? '4' : '8'} min-w-0`}>
-            {topRow.map(p => <PlayerCard key={p.id} p={p} />)}
+          <div className={`flex items-end justify-center px-4 gap-${useGrid ? '4' : '8'} min-w-0 w-full`}>            {topRow.map(p => <PlayerCard key={p.id} p={p} />)}
           </div>
 
           {/* 下段（5人以上の時のみ、ジグザグ感を出すため少し上にずらす） */}
