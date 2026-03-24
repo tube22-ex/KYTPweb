@@ -57,6 +57,7 @@ export interface PlayerState {
   joinedAt: number;
   lastSeen: number;
   speedSamples?: number[];  // 各セットのchars/sec記録
+  completedBlockIdx: number; // 最後に全担当行を打ち終えたブロック番号（未完了=-1）
 }
 
 export interface RoomState {
@@ -211,6 +212,7 @@ export const joinRoom = async (
     currentWord: "",
     joinedAt: Date.now(),
     lastSeen: Date.now(),
+    completedBlockIdx: -1,
   });
 
   // RDB切断時にプレイヤーを自動削除
@@ -485,6 +487,17 @@ export const getAllCachedMaps = async (): Promise<any[]> => {
     console.error("getAllCachedMaps error:", err);
     throw err;
   }
+};
+
+export const updatePlayerCompletedBlock = async (
+  roomId: string,
+  playerId: string,
+  blockIdx: number
+) => {
+  await update(ref(db, `rooms/${roomId}/players/${playerId}`), {
+    completedBlockIdx: blockIdx,
+    lastSeen: Date.now(),
+  });
 };
 
 export const updatePlayerSpeedSamples = async (

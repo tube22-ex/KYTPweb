@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react'
 import { ParseResult } from '../services/api';
 import keygraph from '../utils/keygraph';
 import { sound, miss_sound, clear_sound, bad_sound } from '../utils/sound';
-import { updatePlayerProgress, updatePlayerSpeedSamples, RoomState, setRoomStartTime, getServerTimeOffset, incrementSharedScore, updateSharedCombo, updateGlobalProgress, updateRoomPlayback, determineHostId } from '../services/sync';
+import { updatePlayerProgress, updatePlayerSpeedSamples, updatePlayerCompletedBlock, RoomState, setRoomStartTime, getServerTimeOffset, incrementSharedScore, updateSharedCombo, updateGlobalProgress, updateRoomPlayback, determineHostId } from '../services/sync';
 import { PlayerLane } from './PlayerLane';
 
 interface Props {
@@ -208,6 +208,20 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     }
   }, [roomState?.startTime, isGameOver]);
 
+  // ★ ゲーム開始時に自分のFirebase進捗をリセット（前回の残り値をクリア）
+  const prevStartTimeRef = useRef<number | null | undefined>(undefined);
+  useEffect(() => {
+    const start = roomState?.startTime;
+    if (start != null && prevStartTimeRef.current !== start) {
+      prevStartTimeRef.current = start;
+      if (roomId && playerId) {
+        updatePlayerProgress(roomId, playerId, 0, 0, 0, 0, 0, 0, 0, '', '');
+      }
+    } else if (start == null) {
+      prevStartTimeRef.current = null;
+    }
+  }, [roomState?.startTime, roomId, playerId]);
+
   const currentSet = mapData.displaySets?.[currentBlockIdx];
   const currentLine = useMemo(() => currentSet?.lines?.[currentLineIdx], [currentSet, currentLineIdx]);
   const isMe = currentLine ? isMine(currentLine.absLineIdx) : false;
@@ -320,40 +334,17 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             console.log(`[Judgement] Failure Triggered for Block ${snap_prevBlockIdx}. Checking who failed...`);
             const unfinishedPlayerIds = new Set<string>();
 
-            // 次ブロックの最初の行インデックス（これ以上なら前ブロック完了済みとみなす）
-            const nextBlockFirstAbsIdx = nLines[0]?.absLineIdx ?? Infinity;
-
             if (latestRs && latestRs.players) {
               Object.values(latestRs.players).forEach(p => {
-                // 固定したスナップショット時の名簿で判定
-                const myLines = snap_currentLines.filter(l => getAssignedPlayerId(l.absLineIdx, snap_playerIds) === p.id);
+                const myLines = snap_currentLines.filter(l =>
+                  getAssignedPlayerId(l.absLineIdx, snap_playerIds) === p.id
+                );
                 if (myLines.length === 0) return;
 
-                // 自分ならスナップショット、他人はFirebaseの最新同期値
-                const isMe = p.id === playerId;
-                const curL = isMe ? snap_myAbsLineIdx : p.currentLineIdx;
-                const curC = isMe ? snap_myChunkIdx : p.currentChunkIdx;
-
-                // ★ curL=-1 は「全担当行を打ち終えた完了状態」または「ブロック切替センチネル」→ ALL CLEAR
-                // ★ 次ブロックの先頭行以降にいる場合も前ブロック完了済みとみなす
-                if (curL === -1 || curL >= nextBlockFirstAbsIdx) {
-                  console.log(`  - Checking ${p.name}(${p.id.slice(0, 4)}): Progress=${curL}-${curC} → 完了済み/次ブロック到達済み (ALL CLEAR)`);
-                  return;
-                }
-
-                console.log(`  - Checking ${p.name}(${p.id.slice(0, 4)}): Progress=${curL}-${curC}, SetLines=[${myLines.map(m => m.absLineIdx).join(',')}]`);
-
-                const allDone = myLines.every(l => {
-                  const isPastLine = curL > l.absLineIdx;
-                  const isAtLineDone = (curL === l.absLineIdx && curC >= l.chunks.length);
-                  const lineDone = isPastLine || isAtLineDone;
-
-                  console.log(`      * LineAbsIdx ${l.absLineIdx}: ${lineDone ? 'DONE' : 'FAILED'} (isPast:${isPastLine}, isAtDone:${isAtLineDone}, curC:${curC}, reqC:${l.chunks.length})`);
-                  return lineDone;
-                });
-
-                console.log(`    => Result for ${p.name}: ${allDone ? 'ALL CLEAR' : 'PENALTY'}`);
-                if (!allDone) unfinishedPlayerIds.add(p.id);
+                // ★ completedBlockIdx でブロック完了を判定（Firebase値の曖昧さを回避）
+                const completed = (p.completedBlockIdx ?? -1) >= snap_prevBlockIdx;
+                console.log(`  - Checking ${p.name}(${p.id.slice(0, 4)}): completedBlockIdx=${p.completedBlockIdx ?? -1}, snap_prevBlockIdx=${snap_prevBlockIdx} => ${completed ? 'ALL CLEAR' : 'PENALTY'}`);
+                if (!completed) unfinishedPlayerIds.add(p.id);
               });
             }
 
@@ -383,14 +374,6 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             }
           } else {
             console.log(`[Judgement] Block ${snap_prevBlockIdx} was successfully finished in time (by someone).`);
-          }
-
-          // 【Judgment完了後】Firebase に「前ブロック完了」センチネル(-1)を送信する。
-          // absStart（次ブロック担当行）を送ると、相手クライアントの判定で
-          // curL===absLineIdx かつ curC=0 < reqC となりPENALTYに誤判定されるため。
-          // 実際の次ブロック行番号はエンジン起動後の最初のキー入力時に送信される。
-          if (roomId && playerId) {
-            updatePlayerProgress(roomId, playerId, -1, 0, 0, 0, 0, 0, 0, '', '');
           }
         }, 150);
 
@@ -678,6 +661,9 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
             nextLineIdxForFirebase = lastAbsIdx + 1;
             nextChunkIdxForFirebase = 0;
 
+            // ★ 完了フラグをFirebaseに書き込む（判定で使用）
+            updatePlayerCompletedBlock(roomId, playerId, currentBlockIdx).catch(console.error);
+
             const finalElapsedSec = measureStartTimeRef.current
               ? (Date.now() - measureStartTimeRef.current) / 1000
               : 1;
@@ -907,7 +893,11 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                       if (line.absLineIdx < gl || (line.absLineIdx === gl && cIdx < gc)) {
                         isChunkFinished = true;
                       } else if (p) {
-                        if (p.currentLineIdx === -1 || line.absLineIdx < p.currentLineIdx) {
+                        // currentLineIdx=-1 は「現ブロック全担当行完了」を意味するが、
+                        // 前回ゲームの残り値の可能性もあるため、globalLineIdx より
+                        // 前の行にのみ適用する（現ブロック範囲外なら無視）
+                        const lineIsBeforeGlobal = line.absLineIdx < gl;
+                        if ((p.currentLineIdx === -1 && lineIsBeforeGlobal) || (p.currentLineIdx !== -1 && line.absLineIdx < p.currentLineIdx)) {
                           isChunkFinished = true;
                         } else if (line.absLineIdx === p.currentLineIdx) {
                           if (cIdx < p.currentChunkIdx) { isChunkFinished = true; }
