@@ -390,23 +390,44 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     return () => clearInterval(int);
   }, [currentBlockIdx, mapData.displaySets, isStarted, endTimeMs, isGameOver, isHost, roomId, playerId]);
 
+  // ホストが現在の再生時間を定期的に同期（送信）する
   useEffect(() => {
+    // ホストではない、またはゲームが始まっていない場合は何もしない
     if (!isHost || !isStarted || isGameOver) return;
+
     const interval = setInterval(() => {
       const p = playerRef.current;
-      if (p && typeof p.getCurrentTime === 'function' && p.getPlayerState() === 1)
-        updateRoomPlayback(roomId, p.getCurrentTime());
-    }, 2000);
+      // YouTubeプレイヤーが準備完了かつ再生中 (1) の場合のみ実行
+      if (p && typeof p.getCurrentTime === 'function' && p.getPlayerState() === 1) {
+        const time = p.getCurrentTime();
+        // services/sync.ts の updateRoomPlayback を呼び出してサーバーの値を更新
+        updateRoomPlayback(roomId, time).catch(console.error);
+      }
+    }, 1000); // 1秒間隔（必要に応じて 500ms などに短縮可）
+
     return () => clearInterval(interval);
   }, [isHost, isStarted, isGameOver, roomId]);
 
+  // ゲストがホストの再生時間に自分のプレイヤーを合わせる
   useEffect(() => {
+    // ホスト自身は同期対象外。また、データがない場合は何もしない
     if (isHost || !isStarted || isGameOver || !roomState?.playbackTime) return;
+
     const p = playerRef.current;
     if (p && typeof p.getCurrentTime === 'function' && typeof p.seekTo === 'function') {
-      const diff = Math.abs(roomState.playbackTime - p.getCurrentTime());
-      if (diff > 1.2) p.seekTo(roomState.playbackTime, true);
+      const myTime = p.getCurrentTime();
+      const serverTime = roomState.playbackTime;
+
+      // 自分の再生位置とサーバー（ホスト）の時間の差分を計算
+      const diff = Math.abs(serverTime - myTime);
+
+      // 許容範囲（ここでは1.0秒）を超えてズレている場合のみ、強制的に位置を合わせる
+      if (diff > 0.5) {
+        // 第2引数を true にすると、シーク後に再生を継続しようとします
+        p.seekTo(serverTime, true);
+      }
     }
+    // roomState.playbackTime が更新されるたびにこの処理が走る
   }, [isHost, isStarted, isGameOver, roomState?.playbackTime]);
 
   // ★ allFinished: 前回の結果をキャッシュして変化がない場合はスキップ
