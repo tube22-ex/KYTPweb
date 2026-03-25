@@ -276,8 +276,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         const snap_playerIds = playerIdsRef.current; // 判定中の配役を固定
 
         // 自分の進捗はリセット前のローカル記録（lastSentLineRef）をコピー
-        const snap_myAbsLineIdx = lastSentLineRef.current;
-        const snap_myChunkIdx = lastSentChunkRef.current;
+        // const snap_myAbsLineIdx = lastSentLineRef.current;
+        // const snap_myChunkIdx = lastSentChunkRef.current;
         const lLineOfEndBlock = snap_currentLines[snap_currentLines.length - 1];
 
         // ==========================================
