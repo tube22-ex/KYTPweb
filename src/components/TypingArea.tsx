@@ -208,6 +208,9 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     }
   }, [roomState?.startTime, isGameOver]);
 
+
+
+  // TypingArea.tsx 210行目付近
   // ★ ゲーム開始時に自分のFirebase進捗をリセット（前回の残り値をクリア）
   const prevStartTimeRef = useRef<number | null | undefined>(undefined);
   useEffect(() => {
@@ -215,12 +218,17 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     if (start != null && prevStartTimeRef.current !== start) {
       prevStartTimeRef.current = start;
       if (roomId && playerId) {
+        // 1. 基本的な進捗（行・文字・スコア等）をリセット
         updatePlayerProgress(roomId, playerId, 0, 0, 0, 0, 0, 0, 0, '', '');
+
+        // 2. ★追加：ブロック完了フラグを「未完了(-1)」にリセット
+        updatePlayerCompletedBlock(roomId, playerId, -1).catch(console.error);
       }
     } else if (start == null) {
       prevStartTimeRef.current = null;
     }
   }, [roomState?.startTime, roomId, playerId]);
+
 
   const currentSet = mapData.displaySets?.[currentBlockIdx];
   const currentLine = useMemo(() => currentSet?.lines?.[currentLineIdx], [currentSet, currentLineIdx]);
@@ -763,38 +771,44 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   // ★ 他プレイヤーのチャンク完了を検知して判定表示と打ち切り音を鳴らす
   const prevOtherPlayersProgressRef = useRef<Record<string, { lineIdx: number; chunkIdx: number }>>({});
 
+
   useEffect(() => {
     if (!roomState?.players || !isStarted || isGameOver) return;
     for (const [pid, p] of Object.entries(roomState.players)) {
       if (pid === playerId) continue;
       const prev = prevOtherPlayersProgressRef.current[pid];
       const curr = { lineIdx: p.currentLineIdx, chunkIdx: p.currentChunkIdx };
+
       if (prev) {
         const advanced =
           (curr.lineIdx > prev.lineIdx) ||
           (curr.lineIdx === prev.lineIdx && curr.chunkIdx > prev.chunkIdx) ||
           (curr.lineIdx === -1 && prev.lineIdx !== -1);
+
+        // ★修正：進捗があった場合でも、ゲーム開始直後の同期ズレ（前回の残り値）による誤爆を防ぐ
+        // currentBlockIdx === 0 のときは判定（showJudge）をスキップする
         if (advanced) {
           try { clear_sound.play(); } catch (_) { }
-          // ビッグコンボ表示
-          const newCombo = (roomStateRef.current?.sharedCombo || 0) + 1;
-          setBigComboValue(newCombo);
-          setBigComboVisible(true);
-          if (bigComboTimerRef.current) clearTimeout(bigComboTimerRef.current);
-          bigComboTimerRef.current = setTimeout(() => setBigComboVisible(false), 1200);
-          // 判定表示
-          const completedChunkKey = `${prev.lineIdx}-${prev.chunkIdx}`;
-          const nowVideoMs = currentTimeMsRef.current;
-          const setStartMs = currentSetRef.current?.timeMs ?? 0;
-          const nextSetMs = mapData.displaySets[currentBlockIdxRef.current + 1]?.timeMs
-            ?? (endTimeMs ?? (nowVideoMs + 10000));
-          showJudge(calcJudge(nextSetMs - nowVideoMs, nextSetMs - setStartMs), completedChunkKey);
+
+          if (currentBlockIdxRef.current > 0) { // 第1ブロック以降のみ判定を表示
+            const newCombo = (roomStateRef.current?.sharedCombo || 0) + 1;
+            setBigComboValue(newCombo);
+            setBigComboVisible(true);
+            if (bigComboTimerRef.current) clearTimeout(bigComboTimerRef.current);
+            bigComboTimerRef.current = setTimeout(() => setBigComboVisible(false), 1200);
+
+            const completedChunkKey = `${prev.lineIdx}-${prev.chunkIdx}`;
+            const nowVideoMs = currentTimeMsRef.current;
+            const setStartMs = currentSetRef.current?.timeMs ?? 0;
+            const nextSetMs = mapData.displaySets[currentBlockIdxRef.current + 1]?.timeMs
+              ?? (endTimeMs ?? (nowVideoMs + 10000));
+            showJudge(calcJudge(nextSetMs - nowVideoMs, nextSetMs - setStartMs), completedChunkKey);
+          }
         }
       }
       prevOtherPlayersProgressRef.current[pid] = curr;
     }
   }, [roomState?.players, isStarted, isGameOver, playerId, endTimeMs, mapData.displaySets]);
-
   if (!mapData || !mapData.displaySets || mapData.displaySets.length === 0 || !currentSet) return <div>Loading...</div>;
   const scoreText = (roomState?.sharedScore || 0).toString().padStart(6, '0');
   const currentCombo = roomState?.sharedCombo || 0;
