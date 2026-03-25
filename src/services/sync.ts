@@ -58,11 +58,15 @@ export interface PlayerState {
   lastSeen: number;
   speedSamples?: number[];  // 各セットのchars/sec記録
   completedBlockIdx: number; // 最後に全担当行を打ち終えたブロック番号（未完了=-1）
+  isBufferReady?: boolean;   // プリロード同期フロー：動画バッファ完了フラグ
 }
 
 export interface RoomState {
   mapId: string | null;
   startTime: number | null;
+  /** クライアントの時計ズレに影響されない同期用遅延（ms）。受信時の Date.now() + startDelay が再生開始時刻 */
+  startDelay?: number;
+  startWrittenAt?: number;
   status: 'idle' | 'playing' | 'finished';
   sharedScore: number;
   sharedCombo: number;
@@ -70,6 +74,12 @@ export interface RoomState {
   globalLineIdx: number;
   globalChunkIdx: number;
   playbackTime: number;
+  /** ホスト集中判定: 最新のブロック失敗情報 */
+  lastFailure?: {
+    blockIdx: number;
+    failedPlayerIds: string[];
+    timestamp: number;
+  };
   players: Record<string, PlayerState>;
   requests?: Record<string, {
     mapId: string;
@@ -346,10 +356,15 @@ export const setRoomMapId = async (roomId: string, mapId: string) => {
   });
 };
 
-export const setRoomStartTime = async (roomId: string) => {
+export const setRoomStartTime = async (roomId: string, startDelayMs: number = 0) => {
   const { serverTimestamp } = await import("firebase/database");
   await update(ref(db, `rooms/${roomId}`), {
     startTime: serverTimestamp(),
+    // クライアントの時計ズレに影響されない同期用:
+    // 「この値が Firebase に届いた時刻から startDelayMs ミリ秒後に再生開始」
+    // 各クライアントは受信時の Date.now() + startDelayMs を再生開始時刻とする
+    startDelay: startDelayMs,
+    startWrittenAt: Date.now(), // ホスト自身のローカル時刻（デバッグ用）
     status: "playing",
     sharedScore: 0,
     sharedCombo: 0,
@@ -406,12 +421,33 @@ export const subscribeToRoom = (
   });
 };
 
+// アプリ起動時にオフセットをキャッシュ（複数回呼び出しても計測は1回だけ）
+let _cachedOffset: number | null = null;
+let _offsetPromise: Promise<number> | null = null;
+
 export const getServerTimeOffset = (): Promise<number> => {
-  return new Promise((resolve) => {
+  if (_cachedOffset !== null) {
+    return Promise.resolve(_cachedOffset);
+  }
+  if (_offsetPromise) return _offsetPromise;
+
+  _offsetPromise = new Promise((resolve) => {
+    // RTT を考慮した補正: (送信時刻 + 受信時刻) / 2 がサーバー時刻に近い
+    const sentAt = Date.now();
     onValue(ref(db, ".info/serverTimeOffset"), (snap) => {
-      resolve(snap.val() || 0);
+      const receivedAt = Date.now();
+      const rawOffset = snap.val() as number ?? 0;
+      // rawOffset = serverTime - clientTime（Firebase定義）
+      // RTT/2 分だけクライアント時計が遅れているので補正
+      const rtt = receivedAt - sentAt;
+      const correctedOffset = rawOffset - Math.round(rtt / 2);
+      _cachedOffset = correctedOffset;
+      console.log(`[ServerOffset] raw=${rawOffset}ms | rtt=${rtt}ms | corrected=${correctedOffset}ms`);
+      resolve(correctedOffset);
     }, { onlyOnce: true });
   });
+
+  return _offsetPromise;
 };
 
 export const subscribeToAllRooms = (
@@ -487,6 +523,52 @@ export const getAllCachedMaps = async (): Promise<any[]> => {
     console.error("getAllCachedMaps error:", err);
     throw err;
   }
+};
+
+// ============================================================
+// ホスト集中判定：失敗プレイヤーIDリストをRoomStateに書き込む
+// ============================================================
+
+/**
+ * ホストがブロック失敗と判定したプレイヤーIDリストをFirebaseに書き込みます。
+ * ゲスト側はこの値を購読して「たらい」アニメーションを実行します。
+ */
+export const updateRoomFailure = async (
+  roomId: string,
+  blockIdx: number,
+  failedPlayerIds: string[]
+): Promise<void> => {
+  await update(ref(db, `rooms/${roomId}`), {
+    lastFailure: {
+      blockIdx,
+      failedPlayerIds,
+      timestamp: Date.now(),
+    },
+  });
+};
+
+/**
+ * 動画プリロード完了をFirebaseに通知します（プリロード同期フロー用）。
+ */
+export const updatePlayerBufferReady = async (
+  roomId: string,
+  playerId: string
+): Promise<void> => {
+  await update(ref(db, `rooms/${roomId}/players/${playerId}`), {
+    isBufferReady: true,
+  });
+};
+
+/**
+ * プリロード完了フラグをクリアします（次の開始に備えて）。
+ */
+export const clearPlayerBufferReady = async (
+  roomId: string,
+  playerId: string
+): Promise<void> => {
+  await update(ref(db, `rooms/${roomId}/players/${playerId}`), {
+    isBufferReady: false,
+  });
 };
 
 export const updatePlayerCompletedBlock = async (

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react'
 import { ParseResult } from '../services/api';
 import keygraph from '../utils/keygraph';
 import { sound, miss_sound, clear_sound, bad_sound } from '../utils/sound';
-import { updatePlayerProgress, updatePlayerSpeedSamples, updatePlayerCompletedBlock, RoomState, setRoomStartTime, getServerTimeOffset, incrementSharedScore, updateSharedCombo, updateGlobalProgress, updateRoomPlayback, determineHostId } from '../services/sync';
+import { updatePlayerProgress, updatePlayerSpeedSamples, updatePlayerCompletedBlock, RoomState, setRoomStartTime, getServerTimeOffset, incrementSharedScore, updateSharedCombo, updateGlobalProgress, updateRoomPlayback, determineHostId, updateRoomFailure, updatePlayerBufferReady, clearPlayerBufferReady } from '../services/sync';
 import { PlayerLane } from './PlayerLane';
 
 interface Props {
@@ -67,6 +67,14 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const taraiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const badShakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ★ プリロード同期フロー — タイマーを役割ごとに分離
+  const [isBuffering, setIsBuffering] = useState(false);
+  const isBufferingRef = useRef(false);
+  const bufferCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // ★ タイマーを2つに分離（共有すると allReady→setRoomStartTime のreturnクリーンアップが再生タイマーをキャンセルしてしまう）
+  const allReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);   // ホスト: 全員揃った→3秒後にsetRoomStartTime
+  const playbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);   // 全員: startTime受信→正確なplayVideo()
+
   const measureStartTimeRef = useRef<number | null>(null);
   const setTotalCharsRef = useRef<number>(0);
   const typedCharsInSetRef = useRef<number>(0);
@@ -130,6 +138,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     } catch (e) {
       console.warn('Sound init failed:', e);
     }
+    // サーバー時刻オフセットをマウント時に先行取得してキャッシュ（START押下時の遅延を防ぐ）
+    getServerTimeOffset().catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -190,22 +200,17 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
   useEffect(() => {
     const start = roomState?.startTime;
-    if (start && !isGameOver) {
-      const p = playerRef.current;
-      if (p && typeof p.playVideo === 'function') {
-        const s = p.getPlayerState();
-        if (s !== 1 && s !== 3) getServerTimeOffset().then(off => {
-          const sec = (Date.now() + off - start) / 1000;
-          if (sec > 0) { p.seekTo(sec, true); p.playVideo(); } else p.playVideo();
-        });
-      }
-    } else {
-      try { playerRef.current?.stopVideo(); } catch (e) { }
-      if (!isGameOver) {
-        setCurrentBlockIdx(0); setCurrentLineIdx(0); setCurrentChunkIdx(0);
-        preparedRef.current = "";
+    if (!start || isGameOver) {
+      // startTime未設定またはゲームオーバー時はビデオを停止・状態をリセット
+      if (!start) {
+        try { playerRef.current?.stopVideo(); } catch (e) { }
+        if (!isGameOver) {
+          setCurrentBlockIdx(0); setCurrentLineIdx(0); setCurrentChunkIdx(0);
+          preparedRef.current = "";
+        }
       }
     }
+    // 実際の再生開始は上の「プリロード同期フロー」useEffectが担当するため、ここでは再生しない
   }, [roomState?.startTime, isGameOver]);
 
 
@@ -251,6 +256,17 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     measureStartTimeRef.current = Date.now();
     typedCharsInSetRef.current = 0;
   }, [currentBlockIdx, isStarted, isGameOver]);
+
+  useEffect(() => {
+    if (isGameOver) {
+      setIsBuffering(false);
+      isBufferingRef.current = false;
+      prevBufferingRef.current = false;
+      if (bufferCheckIntervalRef.current) clearInterval(bufferCheckIntervalRef.current);
+      if (allReadyTimerRef.current) clearTimeout(allReadyTimerRef.current);
+      if (playbackTimerRef.current) clearTimeout(playbackTimerRef.current);
+    }
+  }, [isGameOver]);
 
   // ★ currentTime表示専用interval（150ms）
   useEffect(() => {
@@ -329,6 +345,9 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
         // ==========================================
         // 【3. Delayed Final Judgment】
+        // ホストのみ判定を行い、結果をFirebaseに書き込む。
+        // ゲストはFirebaseの lastFailure を購読してアニメーションを実行する。
+        // バッファ 150ms → 400ms に延長（滑り込み入力のラグを吸収）
         // ==========================================
         setTimeout(() => {
           const latestRs = roomStateRef.current;
@@ -340,50 +359,57 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
           if (!blockFinishedByAny) {
             console.log(`[Judgement] Failure Triggered for Block ${snap_prevBlockIdx}. Checking who failed...`);
-            const unfinishedPlayerIds = new Set<string>();
 
-            if (latestRs && latestRs.players) {
-              Object.values(latestRs.players).forEach(p => {
-                const myLines = snap_currentLines.filter(l =>
-                  getAssignedPlayerId(l.absLineIdx, snap_playerIds) === p.id
-                );
-                if (myLines.length === 0) return;
-
-                // ★ completedBlockIdx でブロック完了を判定（Firebase値の曖昧さを回避）
-                const completed = (p.completedBlockIdx ?? -1) >= snap_prevBlockIdx;
-                console.log(`  - Checking ${p.name}(${p.id.slice(0, 4)}): completedBlockIdx=${p.completedBlockIdx ?? -1}, snap_prevBlockIdx=${snap_prevBlockIdx} => ${completed ? 'ALL CLEAR' : 'PENALTY'}`);
-                if (!completed) unfinishedPlayerIds.add(p.id);
-              });
-            }
-
-            if (unfinishedPlayerIds.size > 0) {
-              setTaraiPlayers(unfinishedPlayerIds);
-              setBadShakePlayers(unfinishedPlayerIds);
-              if (taraiTimerRef.current) clearTimeout(taraiTimerRef.current);
-              if (badShakeTimerRef.current) clearTimeout(badShakeTimerRef.current);
-              taraiTimerRef.current = setTimeout(() => setTaraiPlayers(new Set()), 1500);
-              badShakeTimerRef.current = setTimeout(() => setBadShakePlayers(new Set()), 1500);
-
-              setTimeout(() => {
-                try {
-                  const audio = new Audio('/sound/tarai.mp3');
-                  audio.volume = typeof (window as any).clearVolume !== 'undefined' ? (window as any).clearVolume : 1.0;
-                  audio.play();
-                } catch (_) { }
-              }, 200);
-            }
-
-            // ホストのみ：失敗した場合はコンボリセット
             if (isHost) {
+              // ★ ホストのみ「誰が失敗したか」を確定し Firebase に書き込む
+              const unfinishedPlayerIds: string[] = [];
+
+              if (latestRs && latestRs.players) {
+                Object.values(latestRs.players).forEach(p => {
+                  const myLines = snap_currentLines.filter(l =>
+                    getAssignedPlayerId(l.absLineIdx, snap_playerIds) === p.id
+                  );
+                  if (myLines.length === 0) return;
+
+                  const completed = (p.completedBlockIdx ?? -1) >= snap_prevBlockIdx;
+                  console.log(`  - Checking ${p.name}(${p.id.slice(0, 4)}): completedBlockIdx=${p.completedBlockIdx ?? -1}, snap_prevBlockIdx=${snap_prevBlockIdx} => ${completed ? 'ALL CLEAR' : 'PENALTY'}`);
+                  if (!completed) unfinishedPlayerIds.push(p.id);
+                });
+              }
+
+              if (unfinishedPlayerIds.length > 0) {
+                // Firebase に失敗リストを書き込む → 全クライアントがこれを受信してアニメーション
+                updateRoomFailure(roomId, snap_prevBlockIdx, unfinishedPlayerIds).catch(console.error);
+
+                // ホスト自身もたらい演出（他クライアントと同じタイミングで表示）
+                setTaraiPlayers(new Set(unfinishedPlayerIds));
+                setBadShakePlayers(new Set(unfinishedPlayerIds));
+                if (taraiTimerRef.current) clearTimeout(taraiTimerRef.current);
+                if (badShakeTimerRef.current) clearTimeout(badShakeTimerRef.current);
+                taraiTimerRef.current = setTimeout(() => setTaraiPlayers(new Set()), 1500);
+                badShakeTimerRef.current = setTimeout(() => setBadShakePlayers(new Set()), 1500);
+
+                setTimeout(() => {
+                  try {
+                    const audio = new Audio('/sound/tarai.mp3');
+                    audio.volume = typeof (window as any).clearVolume !== 'undefined' ? (window as any).clearVolume : 1.0;
+                    audio.play();
+                  } catch (_) { }
+                }, 200);
+              }
+
+              // ホストのみ：コンボリセットとグローバル進捗更新
               blockChangingRef.current = true;
               updateSharedCombo(roomId, 0, latestRs?.maxSharedCombo || 0);
               updateGlobalProgress(roomId, nLines[0]?.absLineIdx ?? (final_gl + 1), 0);
               setTimeout(() => { blockChangingRef.current = false; }, 500);
+
             }
+            // ゲストは何もしない（lastFailure の購読で対応）
           } else {
             console.log(`[Judgement] Block ${snap_prevBlockIdx} was successfully finished in time (by someone).`);
           }
-        }, 150);
+        }, 400); // ★ 150ms → 400ms に延長（滑り込みラグ吸収）
 
       }
     }, 50);
@@ -430,7 +456,159 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     // roomState.playbackTime が更新されるたびにこの処理が走る
   }, [isHost, isStarted, isGameOver, roomState?.playbackTime]);
 
-  // ★ allFinished: 前回の結果をキャッシュして変化がない場合はスキップ
+  // ============================================================
+  // ★ プリロード同期フロー
+  // ============================================================
+
+  // ゲスト：isBuffering（=いずれかのプレイヤーがisBufferReady書き込み前の状態）を検知して
+  // 自分もプリロードを実行し、完了後 isBufferReady=true を書き込む
+  const prevBufferingRef = useRef(false);
+  useEffect(() => {
+    if (!roomState || isStarted) return;
+
+    const players = Object.values(roomState.players || {});
+    if (players.length === 0) return;
+
+    const hostId = determineHostId(roomState.players);
+    const hostPlayer = hostId ? roomState.players[hostId] : null;
+
+    if (hostPlayer?.isBufferReady && !prevBufferingRef.current && !isHost) {
+      prevBufferingRef.current = true;
+      setIsBuffering(true);
+      isBufferingRef.current = true;
+      console.log(`[Sync:Guest] Host isBufferReady detected. Starting preload...`);
+
+      const p = playerRef.current;
+      if (p && typeof p.seekTo === 'function') {
+        clearPlayerBufferReady(roomId, playerId).then(() => {
+          console.log('[Sync:Guest] Cleared own isBufferReady. Seeking to 0.1s...');
+          p.seekTo(0.1, true);
+          p.playVideo();
+          setTimeout(async () => {
+            try { p.pauseVideo(); } catch (_) { }
+            console.log('[Sync:Guest] Paused after preload. Writing isBufferReady=true...');
+            await updatePlayerBufferReady(roomId, playerId);
+            console.log('[Sync:Guest] ✅ isBufferReady=true written.');
+          }, 500);
+        });
+      } else {
+        console.warn('[Sync:Guest] ⚠ playerRef not ready during preload. Marking ready anyway.');
+        updatePlayerBufferReady(roomId, playerId).catch(console.error);
+      }
+    }
+
+    if (!hostPlayer?.isBufferReady && prevBufferingRef.current && isStarted) {
+      console.log('[Sync:Guest] Host isBufferReady cleared after game start. Resetting local flags.');
+      prevBufferingRef.current = false;
+      setIsBuffering(false);
+      isBufferingRef.current = false;
+    }
+  }, [roomState?.players, isStarted, isHost, roomId, playerId]);
+
+  // ホスト：全員のisBufferReadyがtrueになったら startTime を3秒後にセット
+  useEffect(() => {
+    if (!isHost || !isBuffering || isStarted) return;
+
+    const players = Object.values(roomState?.players || {});
+    if (players.length === 0) return;
+
+    const readyStatus = players.map(p => `${p.name}:${p.isBufferReady ? '✓' : '...'}`).join(' | ');
+    const allReady = players.every(p => p.isBufferReady === true);
+    console.log(`[Sync:Host] BufferReady check — ${readyStatus} — allReady=${allReady}`);
+
+    if (!allReady) return;
+
+    console.log('[Sync:Host] ✅ All players buffer-ready. Writing startTime with startDelay=3000ms...');
+
+    if (allReadyTimerRef.current) clearTimeout(allReadyTimerRef.current);
+    allReadyTimerRef.current = setTimeout(async () => {
+      allReadyTimerRef.current = null;
+      console.log('[Sync:Host] ⏱ Clearing isBufferReady flags and calling setRoomStartTime...');
+      for (const p of players) {
+        clearPlayerBufferReady(roomId, p.id).catch(console.error);
+      }
+      setIsBuffering(false);
+      isBufferingRef.current = false;
+      prevBufferingRef.current = false;
+      // startDelay=3000 を渡す → 各クライアントは受信時刻+3秒後に playVideo()
+      // これにより時計ズレの影響を受けずに全員が同じタイミングで再生できる
+      await setRoomStartTime(roomId, 3000);
+      console.log('[Sync:Host] 🚀 setRoomStartTime(startDelay=3000) done.');
+    }, 0); // ← ローカルの setTimeout 3秒待ちは不要。Firebase書き込み → 受信側が3秒待つ
+
+    // ★ クリーンアップは allReadyTimerRef のみ。playbackTimerRef とは分離。
+    return () => {
+      if (allReadyTimerRef.current) {
+        console.log('[Sync:Host] ⚠ allReady useEffect cleanup — cancelling allReadyTimer');
+        clearTimeout(allReadyTimerRef.current);
+      }
+    };
+  }, [roomState?.players, isHost, isBuffering, isStarted, roomId]);
+
+  // startTime確定後：各クライアントが正確な時刻に playVideo() を実行
+  // ★ クライアントの時計ズレに影響されない方式:
+  //   startDelay が書き込まれた値を受信した瞬間の Date.now() に足して再生開始時刻とする
+  //   これにより serverTimeOffset の精度に依存しない
+  const receivedStartAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!roomState?.startTime || isGameOver) return;
+
+    // startTime が変化した瞬間（新しい値）の受信時刻を記録
+    if (receivedStartAtRef.current === null) {
+      receivedStartAtRef.current = Date.now();
+    }
+
+    const p = playerRef.current;
+    const receivedAt = receivedStartAtRef.current;
+    const startDelay = roomState.startDelay ?? 0;
+
+    console.log(`[Sync:Play] startTime received. startDelay=${startDelay}ms | receivedAt=${receivedAt} | playTarget=${receivedAt + startDelay}`);
+
+    if (!p || typeof p.playVideo !== 'function') {
+      console.warn('[Sync:Play] ⚠ playerRef not ready when startTime arrived!');
+      return;
+    }
+
+    if (playbackTimerRef.current) {
+      console.log('[Sync:Play] playbackTimer already set, skipping duplicate.');
+      return;
+    }
+
+    const nowMs = Date.now();
+    const delayMs = (receivedAt + startDelay) - nowMs;
+
+    console.log(`[Sync:Play] nowMs=${nowMs} | delayMs=${delayMs.toFixed(0)}ms`);
+
+    if (delayMs > 0) {
+      console.log(`[Sync:Play] ⏳ Scheduling playVideo() in ${delayMs.toFixed(0)}ms`);
+      playbackTimerRef.current = setTimeout(() => {
+        console.log('[Sync:Play] ▶ playVideo() fired (scheduled)');
+        playbackTimerRef.current = null;
+        try { p.seekTo(0, true); p.playVideo(); } catch (e) { console.error('[Sync:Play] playVideo error:', e); }
+        setIsBuffering(false);
+      }, delayMs);
+    } else {
+      // 受信が遅れてすでに開始時刻を過ぎている場合（遅延参加など）
+      const sec = (-delayMs) / 1000;
+      console.log(`[Sync:Play] ▶ playVideo() fired immediately, seekTo=${sec.toFixed(2)}s`);
+      playbackTimerRef.current = null;
+      try { p.seekTo(sec, true); p.playVideo(); } catch (e) { console.error('[Sync:Play] playVideo error:', e); }
+      setIsBuffering(false);
+    }
+
+    return () => {
+      if (playbackTimerRef.current) {
+        console.log('[Sync:Play] ⚠ startTime changed — cancelling old playbackTimer');
+        clearTimeout(playbackTimerRef.current);
+        playbackTimerRef.current = null;
+      }
+      receivedStartAtRef.current = null; // 次の startTime 変化に備えてリセット
+    };
+  }, [roomState?.startTime, isGameOver]);
+
+  // ============================================================
+
+
   const allFinishedCacheRef = useRef<{ key: string; result: boolean }>({ key: '', result: false });
   const allFinished = useMemo(() => {
     if (!currentSet || !roomState?.players) return false;
@@ -773,6 +951,38 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     }
   }, [roomState?.globalLineIdx, mapData.displaySets, isGameOver, isStarted, currentBlockIdx]);
 
+  // ============================================================
+  // ★ ゲスト：Firebase の lastFailure を購読してたらいアニメーションを実行
+  // ホストはすでに自分でアニメーションをセットしているため、ここではスキップ
+  // ============================================================
+  const lastFailureTimestampRef = useRef<number>(0);
+  useEffect(() => {
+    if (isHost) return; // ホストは判定時に直接セット済み
+    const failure = roomState?.lastFailure;
+    if (!failure) return;
+    // 同じ失敗イベントを重複処理しないよう timestamp で制御
+    if (failure.timestamp <= lastFailureTimestampRef.current) return;
+    lastFailureTimestampRef.current = failure.timestamp;
+
+    const ids = new Set<string>(failure.failedPlayerIds);
+    if (ids.size === 0) return;
+
+    setTaraiPlayers(ids);
+    setBadShakePlayers(ids);
+    if (taraiTimerRef.current) clearTimeout(taraiTimerRef.current);
+    if (badShakeTimerRef.current) clearTimeout(badShakeTimerRef.current);
+    taraiTimerRef.current = setTimeout(() => setTaraiPlayers(new Set()), 1500);
+    badShakeTimerRef.current = setTimeout(() => setBadShakePlayers(new Set()), 1500);
+
+    setTimeout(() => {
+      try {
+        const audio = new Audio('/sound/tarai.mp3');
+        audio.volume = typeof (window as any).clearVolume !== 'undefined' ? (window as any).clearVolume : 1.0;
+        audio.play();
+      } catch (_) { }
+    }, 200);
+  }, [roomState?.lastFailure, isHost]);
+
   const speedStats = useMemo(() => {
     if (!roomState?.players) return null;
     const result: Record<string, { avg: number; median: number }> = {};
@@ -878,16 +1088,81 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginTop: 4 }}>{mapData.artist || 'Unknown Artist'}</div>
               </div>
               {isHost ? (
-                <button onClick={() => setRoomStartTime(roomId)} style={{
-                  padding: '10px 40px', fontSize: 22, fontWeight: 900, color: '#fff',
-                  background: 'linear-gradient(135deg, #f48, #f06)', border: 'none', borderRadius: 40,
-                  cursor: 'pointer', boxShadow: '0 4px 16px rgba(255,0,100,0.3)',
-                }} className="hover:scale-110 active:scale-95 transition-all transform">START</button>
+                isBuffering ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      padding: '10px 36px', fontSize: 18, fontWeight: 900, color: '#f48',
+                      background: '#fff', border: '2px solid #f48', borderRadius: 40, opacity: 0.9,
+                    }} className="animate-pulse">同期中...</div>
+                    <div style={{ fontSize: 12, color: '#aaa', fontWeight: 600 }}>
+                      全員のバッファ完了を待っています
+                    </div>
+                    {/* 各プレイヤーのバッファ完了状況 */}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                      {roomState && Object.values(roomState.players).map(p => (
+                        <div key={p.id} style={{
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          background: p.isBufferReady ? '#f0fff4' : '#fff',
+                          border: `1.5px solid ${p.isBufferReady ? '#22c55e' : '#fca5a5'}`,
+                          borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 600,
+                        }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.isBufferReady ? '#22c55e' : '#fca5a5' }} />
+                          <span style={{ color: '#444' }}>{p.name}</span>
+                          <span style={{ color: p.isBufferReady ? '#22c55e' : '#f87171' }}>
+                            {p.isBufferReady ? '✓' : '...'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={async () => {
+                    console.log('[Sync:Host] START button clicked. Beginning preload sync flow...');
+                    setIsBuffering(true);
+                    isBufferingRef.current = true;
+
+                    try {
+                      const p = playerRef.current;
+                      if (p && typeof p.seekTo === 'function') {
+                        console.log('[Sync:Host] Seeking to 0.1s for preload...');
+                        p.seekTo(0.1, true);
+                        p.playVideo();
+                        setTimeout(() => {
+                          try { p.pauseVideo(); console.log('[Sync:Host] Paused after preload.'); } catch (_) { }
+                        }, 300);
+                      } else {
+                        console.warn('[Sync:Host] ⚠ playerRef not ready at START click.');
+                      }
+                    } catch (_) { }
+
+                    await clearPlayerBufferReady(roomId, playerId);
+                    console.log('[Sync:Host] Cleared own isBufferReady. Writing true in 500ms...');
+                    setTimeout(async () => {
+                      await updatePlayerBufferReady(roomId, playerId);
+                      console.log('[Sync:Host] ✅ Own isBufferReady=true written.');
+                    }, 500);
+                  }} style={{
+                    padding: '10px 40px', fontSize: 22, fontWeight: 900, color: '#fff',
+                    background: 'linear-gradient(135deg, #f48, #f06)', border: 'none', borderRadius: 40,
+                    cursor: 'pointer', boxShadow: '0 4px 16px rgba(255,0,100,0.3)',
+                  }} className="hover:scale-110 active:scale-95 transition-all transform">START</button>
+                )
               ) : (
                 <div style={{
-                  padding: '10px 30px', fontSize: 16, fontWeight: 900, color: '#f48',
-                  background: '#fff', border: '2px solid #f48', borderRadius: 40, opacity: 0.8,
-                }} className="animate-pulse">WAITING FOR HOST...</div>
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6
+                }}>
+                  <div style={{
+                    padding: '10px 30px', fontSize: 16, fontWeight: 900, color: '#f48',
+                    background: '#fff', border: '2px solid #f48', borderRadius: 40, opacity: 0.8,
+                  }} className="animate-pulse">
+                    {isBuffering ? '同期中...' : 'WAITING FOR HOST...'}
+                  </div>
+                  {isBuffering && (
+                    <div style={{ fontSize: 12, color: '#aaa', fontWeight: 600 }}>
+                      動画をプリロードしています
+                    </div>
+                  )}
+                </div>
               )}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }} className="animate-in fade-in slide-in-from-bottom-4 duration-1000">
                 {roomState && Object.values(roomState.players).map(p => (
