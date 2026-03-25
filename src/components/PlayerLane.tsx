@@ -17,10 +17,9 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId, tar
   // 5人以上なら2段グリッド
   const useGrid = players.length >= 5;
 
-  // 2段に分割（上段: ceil(n/2), 下段: floor(n/2)）
-  const topRow = useGrid ? players.slice(0, Math.ceil(players.length / 2)) : players;
-  const bottomRow = useGrid ? players.slice(Math.ceil(players.length / 2)) : [];
-
+  // 5人以上でも2段に分けず、すべて topRow に入れる
+  const topRow = players;
+  const bottomRow: typeof players = []; // 下段は常に空にする
   const renderPlayerCard = (p: typeof players[number]) => {
     const hasTarai = taraiPlayers?.has(p.id);
     const hasBadShake = badShakePlayers?.has(p.id);
