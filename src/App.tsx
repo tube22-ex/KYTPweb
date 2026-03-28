@@ -114,15 +114,26 @@ export default function App() {
     return saved ? Number(saved) : 50;
   });
 
+  // SE音量管理
+  const [seVolume, setSeVolume] = useState(() => {
+    const saved = localStorage.getItem('kytp_se_volume');
+    return saved ? Number(saved) : 60;
+  });
+
   const [hideVideo, setHideVideo] = useState(() => {
     return localStorage.getItem('kytp_hide_video') === 'true';
   });
+
   useEffect(() => {
     localStorage.setItem('kytp_volume', volume.toString());
-    (window as any).typeVolume = volume / 100;
-    (window as any).clearVolume = volume / 100;
-    (window as any).missVolume = volume / 100;
   }, [volume]);
+
+  useEffect(() => {
+    localStorage.setItem('kytp_se_volume', seVolume.toString());
+    (window as any).typeVolume = seVolume / 100;
+    (window as any).clearVolume = seVolume / 100;
+    (window as any).missVolume = seVolume / 100;
+  }, [seVolume]);
 
 
   useEffect(() => {
@@ -381,7 +392,7 @@ export default function App() {
                     </div>
                     <div className="flex flex-col gap-1.5 mt-2">
                       <div className="flex justify-between items-center">
-                        <label className="text-[9px] font-black text-rose-300 uppercase italic tracking-tighter">Volume</label>
+                        <label className="text-[9px] font-black text-rose-300 uppercase italic tracking-tighter">BGM Volume</label>
                         <span className="text-[10px] font-black text-zinc-400 tabular-nums">{volume}%</span>
                       </div>
                       <input
@@ -391,6 +402,20 @@ export default function App() {
                         value={volume}
                         onChange={(e) => setVolume(Number(e.target.value))}
                         className="w-full h-1.5 bg-rose-100 rounded-lg appearance-none cursor-pointer accent-rose-400"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5 mt-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[9px] font-black text-rose-300 uppercase italic tracking-tighter">SE Volume</label>
+                        <span className="text-[10px] font-black text-zinc-400 tabular-nums">{seVolume}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={seVolume}
+                        onChange={(e) => setSeVolume(Number(e.target.value))}
+                        className="w-full h-1.5 bg-rose-100 rounded-lg appearance-none cursor-pointer accent-purple-400"
                       />
                     </div>
                     <div className="flex items-center justify-between mt-1">

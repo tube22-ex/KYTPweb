@@ -392,7 +392,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 setTimeout(() => {
                   try {
                     const audio = new Audio('/sound/tarai.mp3');
-                    audio.volume = typeof (window as any).clearVolume !== 'undefined' ? (window as any).clearVolume : 1.0;
+                    const baseVol = typeof (window as any).clearVolume !== 'undefined' ? (window as any).clearVolume : 1.0;
+                    audio.volume = Math.min(1.0, baseVol * 1.5);
                     audio.play();
                   } catch (_) { }
                 }, 200);
@@ -977,7 +978,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     setTimeout(() => {
       try {
         const audio = new Audio('/sound/tarai.mp3');
-        audio.volume = typeof (window as any).clearVolume !== 'undefined' ? (window as any).clearVolume : 1.0;
+        const baseVol = typeof (window as any).clearVolume !== 'undefined' ? (window as any).clearVolume : 1.0;
+        audio.volume = Math.min(1.0, baseVol * 1.5);
         audio.play();
       } catch (_) { }
     }, 200);
