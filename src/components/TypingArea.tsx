@@ -802,7 +802,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         const gl = rs?.globalLineIdx ?? 0;
         const gc = rs?.globalChunkIdx ?? 0;
 
-        typedCharsInSetRef.current += currentLine.chunks[currentChunkIdx].text.length;
+        typedCharsInSetRef.current += keygraph.key_done().length;
         const elapsedSec = measureStartTimeRef.current
           ? (Date.now() - measureStartTimeRef.current) / 1000
           : 1;
