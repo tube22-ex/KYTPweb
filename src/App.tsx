@@ -59,8 +59,13 @@ export default function App() {
   const [mySlotId, setMySlotId] = useState<SlotId | null>(null);
 
   // 表示トグル
-  const [showHistory, setShowHistory] = useState(false);
-  const [showGuide, setShowGuide] = useState(true);
+  const [showHistory, setShowHistory] = useState(() => {
+    return localStorage.getItem('kytp_show_history') === 'true';
+  });
+  const [showGuide, setShowGuide] = useState(() => {
+    const saved = localStorage.getItem('kytp_show_guide');
+    return saved === null ? true : saved === 'true';
+  });
   const [editorInitialId, setEditorInitialId] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [editorInitialData, setEditorInitialData] = useState<ParseResult | null>(null);
@@ -68,6 +73,7 @@ export default function App() {
   // 現在の再生/タイピングブロック
   const [activeBlockIdx, setActiveBlockIdx] = useState(0);
   const guideRef = useRef<HTMLDivElement>(null);
+  const hasPrefilledRef = useRef(false);
 
   useEffect(() => {
     if (guideRef.current && showGuide) {
@@ -147,6 +153,14 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('kytp_font', selectedFont);
   }, [selectedFont]);
+
+  useEffect(() => {
+    localStorage.setItem('kytp_show_history', showHistory.toString());
+  }, [showHistory]);
+
+  useEffect(() => {
+    localStorage.setItem('kytp_show_guide', showGuide.toString());
+  }, [showGuide]);
 
 
 
@@ -253,8 +267,18 @@ export default function App() {
 
   useEffect(() => {
     if (!inRoom) {
+      hasPrefilledRef.current = false;
       const unsub = subscribeToAllRooms((rooms) => {
         setAllRooms(rooms);
+
+        // ★ 部屋が一つもない場合、入力欄に「部屋」と事前入力しておく
+        if (!hasPrefilledRef.current) {
+          if (!rooms || Object.keys(rooms).length === 0) {
+            setRoomInput(prev => prev === '' ? '部屋' : prev);
+          }
+          hasPrefilledRef.current = true;
+        }
+
         if (rooms) {
           const now = Date.now();
           Object.keys(rooms).forEach(rid => {
