@@ -378,6 +378,11 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
     }));
   };
 
+  const delBlock = (bid: string) => {
+    if (!window.confirm('このブロックを削除しますか？')) return;
+    setBlocks(p => p.filter(b => b.id !== bid));
+  };
+
   const commitBlockTime = (bid: string) => {
     const v = parseInt(editingTimeValue);
     if (!isNaN(v)) setBlocks(p => p.map(b => b.id === bid ? { ...b, timeMs: v } : b));
@@ -888,10 +893,17 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
                         </span>
                       )}
                     </div>
-                    <button onClick={e => { e.stopPropagation(); addLine(block.id); }}
-                      className="text-[10px] font-black text-zinc-400 hover:text-green-400 px-2 py-0.5 border border-zinc-600 hover:border-green-600 transition-colors">
-                      + 行追加 ({block.timeMs}ms)
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={e => { e.stopPropagation(); delBlock(block.id); }}
+                        className="text-[10px] font-black text-zinc-500 hover:text-rose-400 px-2 py-0.5 border border-zinc-600 hover:border-rose-400 transition-colors bg-zinc-800/50"
+                        title="ブロックを削除">
+                        ✕ 削除
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); addLine(block.id); }}
+                        className="text-[10px] font-black text-zinc-400 hover:text-green-400 px-2 py-0.5 border border-zinc-600 hover:border-green-600 transition-colors">
+                        + 行追加 ({block.timeMs}ms)
+                      </button>
+                    </div>
                   </div>
 
                   {/* 行 */}

@@ -1265,8 +1265,9 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 const now = currentTimeMsRef.current;
                 const setEnd = nextSet ? nextSet.timeMs : (videoDuration * 1000);
                 let start, end;
-                if (currentBlockIdx === 0 && now < line.timeMs) { start = 0; end = line.timeMs; }
-                else { start = line.timeMs; end = setEnd; }
+                const lineTimeMs = line ? line.timeMs : currentSet.timeMs;
+                if (currentBlockIdx === 0 && now < lineTimeMs) { start = 0; end = lineTimeMs; }
+                else { start = lineTimeMs; end = setEnd; }
                 const progress = Math.max(0, Math.min(100, (now - start) / Math.max(1, end - start) * 100));
                 return (
                   <div className="w-full h-4 bg-black/20 flex-shrink-0">
