@@ -537,17 +537,27 @@ export default function App() {
                             <button
                               key={rid}
                               onClick={() => setRoomInput(toDisplayRoomId(rid))}
-                              onDoubleClick={() => !isPlaying && handleJoin(toDisplayRoomId(rid))}
-                              className="group flex items-center justify-between p-3 bg-white border border-zinc-100 hover:border-rose-200 hover:bg-rose-50/30 transition-all text-left"
+                              onDoubleClick={() => {
+                                if (isPlaying) {
+                                  alert('プレイ中の部屋には入室できません。');
+                                  return;
+                                }
+                                handleJoin(toDisplayRoomId(rid));
+                              }}
+                              className={`group flex items-center justify-between p-3 border transition-all text-left ${
+                                isPlaying 
+                                  ? 'bg-zinc-50 border-zinc-200 cursor-not-allowed' 
+                                  : 'bg-white border-zinc-100 hover:border-rose-200 hover:bg-rose-50/30'
+                              }`}
                             >
                               <div className="flex flex-col">
-                                <span className="text-xs font-black text-zinc-600 group-hover:text-rose-500"># {toDisplayRoomId(rid)}</span>
-                                <span className="text-[9px] font-bold text-zinc-400">
+                                <span className={`text-xs font-black ${isPlaying ? 'text-zinc-400' : 'text-zinc-600 group-hover:text-rose-500'}`}># {toDisplayRoomId(rid)}</span>
+                                <span className={`text-[9px] font-bold ${isPlaying ? 'text-rose-500' : 'text-zinc-400'}`}>
                                   {isPlaying ? '🎮 プレイ中' : '⏳ 待機中'}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-black text-rose-300">{pCount} 名</span>
+                                <span className={`text-[10px] font-black ${isPlaying ? 'text-zinc-300' : 'text-rose-300'}`}>{pCount} 名</span>
                               </div>
                             </button>
                           );
