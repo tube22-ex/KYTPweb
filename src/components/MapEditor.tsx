@@ -380,8 +380,31 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
   // ---- チャンク編集 ----
   const commitEdit = () => {
     if (!editingChunkId) return;
-    const id = editingChunkId, txt = editingText;
-    setBlocks(p => p.map(b => ({ ...b, lines: b.lines.map(l => ({ ...l, chunks: l.chunks.map(c => c.id === id ? { ...c, text: txt } : c) })) })));
+    const id = editingChunkId;
+    const txt = editingText.trim();
+    if (txt === '') { setEditingChunkId(null); return; }
+
+    // スペース（全角・半角）で分割
+    const parts = txt.split(/[\s　]+/).filter(p => p.length > 0);
+    
+    setBlocks(prev => prev.map(b => ({
+      ...b, lines: b.lines.map(l => {
+        const idx = l.chunks.findIndex(c => c.id === id);
+        if (idx === -1) return l;
+        
+        const original = l.chunks[idx];
+        const newChunks = parts.map((p, pidx) => ({
+          id: pidx === 0 ? id : uid(), // 最初の一つ以外は新しいIDを発行
+          text: p,
+          timeMs: original.timeMs,
+          isLineHead: pidx === 0 ? original.isLineHead : false // 先頭フラグは最初の一つだけ継承
+        }));
+
+        const nextChunks = [...l.chunks];
+        nextChunks.splice(idx, 1, ...newChunks);
+        return { ...l, chunks: nextChunks };
+      })
+    })));
     setEditingChunkId(null);
   };
 
@@ -397,33 +420,78 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
 
   const mergeChunkBackward = (bid: string, lid: string, cid: string) => {
     setBlocks(p => p.map(b => b.id !== bid ? b : {
-      ...b, lines: b.lines.map(l => {
-        if (l.id !== lid) return l;
-        const idx = l.chunks.findIndex(c => c.id === cid);
-        if (idx <= 0) return l;
-        const prev = l.chunks[idx - 1];
-        const curr = l.chunks[idx];
-        const newChunks = [...l.chunks];
-        newChunks[idx - 1] = { ...prev, text: prev.text + curr.text };
-        newChunks.splice(idx, 1);
-        return { ...l, chunks: newChunks };
-      })
+      ...b, lines: b.lines.reduce((acc, l, lidx) => {
+        if (l.id !== lid) { acc.push(l); return acc; }
+        const cidx = l.chunks.findIndex(c => c.id === cid);
+        if (cidx > 0) {
+          // 同一行内
+          const prev = l.chunks[cidx - 1];
+          const curr = l.chunks[cidx];
+          const nextChunks = [...l.chunks];
+          nextChunks[cidx - 1] = { ...prev, text: prev.text + curr.text };
+          nextChunks.splice(cidx, 1);
+          acc.push({ ...l, chunks: nextChunks });
+        } else if (lidx > 0) {
+          // 前の行の最後と結合
+          const prevLine = acc[acc.length - 1];
+          const lastC = prevLine.chunks[prevLine.chunks.length - 1];
+          prevLine.chunks[prevLine.chunks.length - 1] = { ...lastC, text: lastC.text + l.chunks[0].text };
+          const nextChunks = l.chunks.slice(1);
+          if (nextChunks.length > 0) acc.push({ ...l, chunks: nextChunks });
+        } else {
+          acc.push(l);
+        }
+        return acc;
+      }, [] as EditableLine[])
     }));
   };
 
   const mergeChunkForward = (bid: string, lid: string, cid: string) => {
-    setBlocks(p => p.map(b => b.id !== bid ? b : {
-      ...b, lines: b.lines.map(l => {
-        if (l.id !== lid) return l;
-        const idx = l.chunks.findIndex(c => c.id === cid);
-        if (idx === -1 || idx >= l.chunks.length - 1) return l;
-        const curr = l.chunks[idx];
-        const next = l.chunks[idx + 1];
-        const newChunks = [...l.chunks];
-        newChunks[idx] = { ...curr, text: curr.text + next.text };
-        newChunks.splice(idx + 1, 1);
-        return { ...l, chunks: newChunks };
-      })
+    setBlocks(p => p.map(b => {
+      if (b.id !== bid) return b;
+      let targetLidx = b.lines.findIndex(l => l.id === lid);
+      if (targetLidx === -1) return b;
+      const l = b.lines[targetLidx];
+      const cidx = l.chunks.findIndex(c => c.id === cid);
+      if (cidx === -1) return b;
+
+      const newLines = [...b.lines];
+      if (cidx < l.chunks.length - 1) {
+        // 同一行内
+        const curr = l.chunks[cidx];
+        const next = l.chunks[cidx + 1];
+        const nextChunks = [...l.chunks];
+        nextChunks[cidx] = { ...curr, text: curr.text + next.text };
+        nextChunks.splice(cidx + 1, 1);
+        newLines[targetLidx] = { ...l, chunks: nextChunks };
+      } else if (targetLidx < b.lines.length - 1) {
+        // 次の行の最初と結合
+        const nextLine = b.lines[targetLidx + 1];
+        const curr = l.chunks[cidx];
+        const nextC = nextLine.chunks[0];
+        const nextLineChunks = [...nextLine.chunks];
+        nextLineChunks[0] = { ...curr, text: curr.text + nextC.text };
+        newLines[targetLidx + 1] = { ...nextLine, chunks: nextLineChunks };
+        const currLineChunks = l.chunks.slice(0, -1);
+        if (currLineChunks.length > 0) {
+          newLines[targetLidx] = { ...l, chunks: currLineChunks };
+        } else {
+          newLines.splice(targetLidx, 1);
+        }
+      } else {
+        // ブロックの最後の行の末尾 -> 新しい行を増やして移動
+        const curr = l.chunks[cidx];
+        const newLine: EditableLine = { id: uid(), timeMs: l.timeMs, chunks: [{ ...curr, id: uid() }] };
+        const currLineChunks = l.chunks.slice(0, -1);
+        if (currLineChunks.length > 0) {
+          newLines[targetLidx] = { ...l, chunks: currLineChunks };
+          newLines.push(newLine);
+        } else {
+          // もしその行に1語しかなかったら意味がないが、一応追加してカレントを消す
+          newLines.splice(targetLidx, 1, newLine);
+        }
+      }
+      return { ...b, lines: newLines };
     }));
   };
 
@@ -433,6 +501,51 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
     setBlocks(p => p.map(b => b.id !== bid ? b : {
       ...b, lines: [...b.lines, { id: uid(), timeMs: t, chunks: [{ id: uid(), text: 'テキスト', timeMs: t }] }]
     }));
+  };
+
+  const splitBlock = (bid: string, lid: string) => {
+    setBlocks(prev => {
+      const idx = prev.findIndex(b => b.id === bid);
+      if (idx === -1) return prev;
+      const b = prev[idx];
+      const lidx = b.lines.findIndex(l => l.id === lid);
+      if (lidx === -1) return prev;
+
+      // 現在の行 (lid) から次の青い単語が始まる行の直前までを 1 つのブロックにする
+      let nextBlueLidx = b.lines.length;
+      for (let i = lidx + 1; i < b.lines.length; i++) {
+        if (b.lines[i].chunks.length > 0 && b.lines[i].chunks[0].isLineHead) {
+          nextBlueLidx = i;
+          break;
+        }
+      }
+
+      const resultBlocks: EditableBlock[] = [];
+      // 1. 指定位置より前の行
+      if (lidx > 0) {
+        const linesA = b.lines.slice(0, lidx);
+        resultBlocks.push({ ...b, id: uid(), lines: linesA });
+      }
+
+      // 2. 指定位置から次の青い単語の手前まで（ここを独立させる）
+      const linesB = b.lines.slice(lidx, nextBlueLidx);
+      const originalTime = linesB[0].chunks[0]?.timeMs ?? b.timeMs;
+      resultBlocks.push({
+        id: uid(),
+        timeMs: originalTime,
+        lines: linesB.map(l => ({ ...l, timeMs: originalTime, chunks: l.chunks.map(c => ({ ...c, timeMs: originalTime })) }))
+      });
+
+      // 3. 次の青い単語以降
+      if (nextBlueLidx < b.lines.length) {
+        const linesC = b.lines.slice(nextBlueLidx);
+        resultBlocks.push({ ...b, id: uid(), lines: linesC });
+      }
+
+      const res = [...prev];
+      res.splice(idx, 1, ...resultBlocks);
+      return res;
+    });
   };
 
   const delBlock = (bid: string) => {
@@ -535,7 +648,10 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
       for (const set of newSets) {
         const t = set.lines[0]?.chunks[0]?.timeMs ?? 0;
         set.timeMs = t;
-        for (const line of set.lines) { line.timeMs = t; for (const c of line.chunks) c.timeMs = t; }
+        for (const line of set.lines) {
+          line.timeMs = t;
+          // 各チャウンクの timeMs は、元のタイミングを保持するために上書きしない
+        }
       }
       const newBlocks = toEditable({ lines: parsedLines, displaySets: newSets });
       setBlocks(newBlocks);
@@ -1058,7 +1174,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
                     className="bg-zinc-900 p-2 flex flex-col gap-1"
                     onClick={() => scrollToNearestLine(block.timeMs)}
                   >
-                    {block.lines.map((line) => (
+                    {block.lines.map((line, li) => (
                       <div key={line.id} className="flex items-center gap-1.5 p-1.5 bg-zinc-800" style={{ minHeight: '40px' }}>
                         {/* 行の時間 */}
                         {editingLineTimeId === line.id ? (
@@ -1068,11 +1184,24 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
                             onKeyDown={e => { if (e.key === 'Enter') commitLineTime(block.id, line.id); if (e.key === 'Escape') setEditingLineTimeId(null); }}
                             className="bg-zinc-700 text-rose-400 font-mono text-[10px] px-1.5 py-0.5 w-20 outline-none border border-rose-500 flex-shrink-0" />
                         ) : (
-                          <span className="text-[10px] font-mono text-rose-400 cursor-pointer hover:text-rose-300 tabular-nums flex-shrink-0"
-                            style={{ minWidth: '76px' }}
-                            onClick={() => { setEditingLineTimeId(line.id); setEditingTimeValue(String(line.timeMs)); }}>
-                            [{line.timeMs}]
-                          </span>
+                          <div className="flex items-center gap-1 flex-shrink-0" style={{ minWidth: '100px' }}>
+                            <span className="text-[10px] font-mono text-rose-400 cursor-pointer hover:text-rose-300 tabular-nums"
+                              onClick={() => { setEditingLineTimeId(line.id); setEditingTimeValue(String(line.timeMs)); }}>
+                              [{line.timeMs}]
+                            </span>
+                            {line.chunks.length > 0 && line.chunks[0].isLineHead && (
+                              (() => {
+                                const blueCount = block.lines.filter(fl => fl.chunks.length > 0 && fl.chunks[0].isLineHead).length;
+                                return blueCount > 1 ? (
+                                  <button
+                                    onClick={() => splitBlock(block.id, line.id)}
+                                    className="text-[8px] font-bold bg-indigo-600/50 hover:bg-indigo-500 text-indigo-100 px-1 py-0.5 rounded border border-indigo-400/50 transition-colors"
+                                    title="このBLOCKを歌詞フレーズ(青単語)ごとに一括分割する"
+                                  >◨ 分割</button>
+                                ) : null;
+                              })()
+                            )}
+                          </div>
                         )}
 
                         {/* チャンク + DropZone */}
@@ -1097,18 +1226,20 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
                                 className={`group flex items-stretch border transition-opacity duration-100 ${chunk.isLineHead ? 'bg-indigo-700/60 border-indigo-400' : 'bg-zinc-700 border-zinc-500'}`}
                                 style={{ opacity: dragRef.current?.chunk.id === chunk.id ? 0.3 : 1 }}
                               >
-                                {/* 前に結合 */}
-                                {ci > 0 && (
-                                  <button
-                                    onClick={() => mergeChunkBackward(block.id, line.id, chunk.id)}
-                                    className="opacity-0 group-hover:opacity-100 w-4 bg-zinc-600/50 hover:bg-zinc-500 text-[9px] text-white transition-opacity"
-                                    title="前の単語と結合"
-                                  >◀</button>
-                                )}
+                                {/* 前に結合ボタン用の固定幅スペース */}
+                                <div className="w-4 flex flex-shrink-0 items-stretch">
+                                  {(ci > 0 || li > 0) && (
+                                    <button
+                                      onClick={() => mergeChunkBackward(block.id, line.id, chunk.id)}
+                                      className="opacity-40 group-hover:opacity-100 group-hover:bg-indigo-600/50 w-full bg-zinc-600/30 hover:bg-indigo-500 text-[9px] text-white transition-opacity border-r border-zinc-600 flex items-center justify-center font-bold"
+                                      title="前の単語と結合"
+                                    >◀</button>
+                                  )}
+                                </div>
 
                                 {/* 三本線ハンドル */}
                                 <div
-                                  className="flex flex-col items-center justify-center gap-0.5 px-1 bg-zinc-600/30 cursor-grab active:cursor-grabbing hover:bg-zinc-600/50 transition-colors"
+                                  className="flex flex-col items-center justify-center gap-0.5 px-0.5 bg-zinc-600/30 cursor-grab active:cursor-grabbing hover:bg-zinc-600/50 transition-colors"
                                   title="ドラッグして移動"
                                 >
                                   <div className="w-2 h-[1px] bg-zinc-400 rounded-full pointer-events-none" />
@@ -1130,22 +1261,29 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
                                       }
                                     }}
                                     className="bg-zinc-600 text-white font-mono text-[13px] px-2 py-1 outline-none border-none"
-                                    style={{ minWidth: `${Math.max((editingText.length + 1) * 13, 48)}px` }} />
+                                    style={{ minWidth: `${Math.max((editingText.length + 1) * 11, 48)}px` }}
+                                  />
                                 ) : (
-                                  <span className="text-[13px] font-bold text-green-300 px-2 py-1 select-none"
-                                    style={{ cursor: 'pointer' }}
-                                    onClick={() => { setEditingChunkId(chunk.id); setEditingText(chunk.text); }}>
+                                  <span
+                                    className="text-[13px] font-bold text-green-300 px-2 py-1 select-none cursor-pointer"
+                                    draggable="false"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingChunkId(chunk.id);
+                                      setEditingText(chunk.text);
+                                    }}
+                                  >
                                     {chunk.text}
                                   </span>
                                 )}
-                                {/* 後ろに結合 */}
-                                {ci < line.chunks.length - 1 && (
+                                {/* 後ろに結合ボタン用の固定幅スペース */}
+                                <div className="w-4 flex flex-shrink-0 items-stretch">
                                   <button
                                     onClick={() => mergeChunkForward(block.id, line.id, chunk.id)}
-                                    className="opacity-0 group-hover:opacity-100 w-4 bg-zinc-600/50 hover:bg-zinc-500 text-[9px] text-white transition-opacity border-l border-zinc-600"
-                                    title="後ろの単語と結合"
+                                    className="opacity-40 group-hover:opacity-100 group-hover:bg-indigo-600/50 w-full bg-zinc-600/30 hover:bg-indigo-500 text-[9px] text-white transition-opacity border-l border-zinc-600 flex items-center justify-center font-bold"
+                                    title={ci < line.chunks.length - 1 || li < block.lines.length - 1 ? "後ろの単語と結合" : "新しい行に移動"}
                                   >▶</button>
-                                )}
+                                </div>
                                 <button
                                   onClick={e => { e.stopPropagation(); delChunk(block.id, line.id, chunk.id); }}
                                   style={{ color: '#52525b', fontSize: '13px', padding: '0 6px', background: 'none', border: 'none', cursor: 'pointer', alignSelf: 'stretch', display: 'flex', alignItems: 'center', opacity: 0, transition: 'opacity 0.15s' }}
