@@ -82,10 +82,23 @@ export async function splitYomi(
   _lyrics: string,
   word: string,
   MIN = 3,
-  MAX = 14
+  MAX = 14,
+  protectedWords: string[] = [],
+  separationWords: string[] = []
 ): Promise<string[]> {
   const katakanaToHiragana = (src: string) =>
     src.replace(/[\u30a1-\u30f6]/g, (m) => String.fromCharCode(m.charCodeAt(0) - 0x60));
+
+  const normalizeText = (text: string) => {
+    return text
+      .replace(/[ー－―—‐-]/g, 'ー')
+      .replace(/[！!]/g, '!')
+      .replace(/[？?]/g, '?')
+      .replace(/[…‥]/g, '...')
+      .replace(/[　\s]/g, '');
+  };
+
+  const cleanRegex = /[^a-zA-Z0-9\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf\uff10-\uff19\uff21-\uff3a\uff41-\uff5aー]/g;
 
   // 1. スペース（半角・全角）で事前分割
   const initialParts = word.split(/[ 　]/).filter(p => p.length > 0);
@@ -94,107 +107,205 @@ export async function splitYomi(
   const results: string[] = [];
   const SMALL_CHARS = /[っッゃゅょャュョぁぃぅぇぉァィゥェォー]/;
 
+  const normalizedProtected = protectedWords
+    .filter(pw => pw.trim().length > 0)
+    .map(pw => katakanaToHiragana(normalizeText(pw.trim()).replace(cleanRegex, '')));
+
+  const normalizedSeparation = separationWords
+    .filter(sw => sw.trim().length > 0)
+    .map(sw => katakanaToHiragana(normalizeText(sw.trim()).replace(cleanRegex, '')));
+
   for (const part of initialParts) {
-    // 英語・記号のみのパーツはそのまま採用（ただし記号は除去）
     if (/^[a-zA-Z0-9!?. ,:;'"\-()[\]{}<>/\\#$%&|^~@+*=！!．，：；”’（）［］｛｝＜＞／＼＃＄％＆｜＾〜＠＋＊＝]+$/.test(part)) {
-      // 英数字のみを残す（記号をすべて削除）
       const cleanPart = part.replace(/[^a-zA-Z0-9]/g, '');
       if (cleanPart) results.push(cleanPart);
       continue;
     }
 
-    // 日本語が含まれるパーツの処理
-    // 記号をすべて削除
-    const cleanWord = katakanaToHiragana(part.replace(/[^a-zA-Z0-9\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf\uff10-\uff19\uff21-\uff3a\uff41-\uff5a]/g, '')).trim();
+    const cleanWord = katakanaToHiragana(normalizeText(part).replace(cleanRegex, '')).trim();
     if (!cleanWord) continue;
+
+    // 分割禁止・強制分割のインデックスを構築
+    const forbiddenSplit = new Set<number>();
+    for (const pw of normalizedProtected) {
+      let pos = cleanWord.indexOf(pw);
+      while (pos !== -1) {
+        for (let i = pos; i < pos + pw.length - 1; i++) forbiddenSplit.add(i);
+        pos = cleanWord.indexOf(pw, pos + 1);
+      }
+    }
+
+    const mandatorySplit = new Set<number>();
+    for (const sw of normalizedSeparation) {
+      let pos = cleanWord.indexOf(sw);
+      while (pos !== -1) {
+        if (pos > 0) mandatorySplit.add(pos - 1);
+        mandatorySplit.add(pos + sw.length - 1);
+        pos = cleanWord.indexOf(sw, pos + 1);
+      }
+    }
 
     try {
       const tokenizer = await getTokenizer();
       const tokens = tokenizer.tokenize(cleanWord);
 
-      // 文節グループ化
-      const groups: string[] = [];
-      let cur = '';
+      // --- Chunksの作成 ---
+      // トークン境界と強制分割点を組み合わせて、最小単位のChunckに分ける
+      const atomicChunks: { text: string; mustSplitAfter: boolean; canSplitAfter: boolean }[] = [];
+      let charIdx = 0;
       for (const t of tokens) {
-        const pos = t.pos;
-        const pos1 = t.pos_detail_1;
-        const isFuzoku = ['助詞', '助動詞'].includes(pos);
-        const isNonIndep = pos1 === '非自立';
-        const isSuffix = pos1 === '接尾';
-        const isSmallChar = SMALL_CHARS.test(t.surface_form);
+        let text = t.surface_form;
+        let innerOffset = 0;
+        
+        while (text.length > 0) {
+          let splitAt = -1;
+          for (let jj = 0; jj < text.length - 1; jj++) {
+            if (mandatorySplit.has(charIdx + innerOffset + jj)) {
+              splitAt = jj;
+              break;
+            }
+          }
 
-        if (!isFuzoku && !isNonIndep && !isSuffix && !isSmallChar) {
-          if (cur) groups.push(cur);
-          cur = t.surface_form;
-        } else {
-          cur += t.surface_form;
+          if (splitAt !== -1) {
+            const piece = text.slice(0, splitAt + 1);
+            atomicChunks.push({ text: piece, mustSplitAfter: true, canSplitAfter: true });
+            text = text.slice(splitAt + 1);
+            innerOffset += piece.length;
+          } else {
+            // トークン末尾
+            const absoluteEndIdx = charIdx + innerOffset + text.length - 1;
+            const pos = t.pos, posData1 = t.pos_detail_1;
+            const isFuzoku = ['助詞', '助動詞'].includes(pos);
+            const isNonIndep = posData1 === '非自立';
+            const isSuffix = posData1 === '接尾';
+            const isSmallChar = SMALL_CHARS.test(text);
+            
+            // 文法的・あるいは指定により分割可能か
+            const isNaturalSplit = !isFuzoku && !isNonIndep && !isSuffix && !isSmallChar;
+            const mustSplit = mandatorySplit.has(absoluteEndIdx);
+            const canSplit = !forbiddenSplit.has(absoluteEndIdx);
+            
+            atomicChunks.push({
+              text,
+              mustSplitAfter: mustSplit,
+              canSplitAfter: (isNaturalSplit || mustSplit) && canSplit
+            });
+            break;
+          }
+        }
+        charIdx += t.surface_form.length;
+      }
+
+      // --- Grouping (Natural Splitに従う) ---
+      let groups: string[] = [];
+      let cur = '';
+      for (const chunk of atomicChunks) {
+        cur += chunk.text;
+        if (chunk.canSplitAfter) {
+          groups.push(cur);
+          cur = '';
         }
       }
       if (cur) groups.push(cur);
 
-      // パーツ内でのマージ（MAXを超えない範囲でMINに近づける）
-      let partResult = [...groups];
-      let changed = true;
-      while (changed) {
-        changed = false;
-        const next: string[] = [];
-        let i = 0;
-        while (i < partResult.length) {
-          const g = partResult[i];
-          if (g.length < MIN) {
-            if (i + 1 < partResult.length && (g + partResult[i + 1]).length <= MAX) {
-              next.push(g + partResult[i + 1]); i += 2; changed = true; continue;
-            }
-            if (next.length && (next[next.length - 1] + g).length <= MAX) {
-              next[next.length - 1] += g; i++; changed = true; continue;
-            }
-          }
-          next.push(g); i++;
-        }
-        partResult = next;
-      }
+      // --- Merging (MIN/MAX設定に従う。ただしMandatoryは尊重) ---
+      const applyMerge = (inputGroups: string[]) => {
+        let currentGroups = [...inputGroups];
+        let changed = true;
+        while (changed) {
+          changed = false;
+          const next: string[] = [];
+          let i = 0;
+          let offset = 0;
+          while (i < currentGroups.length) {
+            const g = currentGroups[i];
+            const endIdx = offset + g.length - 1;
+            const mustSplit = mandatorySplit.has(endIdx);
+            const canSplit = !forbiddenSplit.has(endIdx);
 
-      // 強制マージ（MINを満たさないものを、MAXを多少超えても良いので結合する）
-      {
+            if (!mustSplit && (g.length < MIN || !canSplit)) {
+              // 次と結合
+              if (i + 1 < currentGroups.length && (g + currentGroups[i + 1]).length <= MAX) {
+                next.push(g + currentGroups[i + 1]);
+                offset += (g + currentGroups[i + 1]).length;
+                i += 2; changed = true; continue;
+              }
+              // 前と結合
+              if (next.length > 0 && (next[next.length - 1] + g).length <= MAX) {
+                next[next.length - 1] += g;
+                offset += g.length;
+                i++; changed = true; continue;
+              }
+            }
+            next.push(g);
+            offset += g.length;
+            i++;
+          }
+          currentGroups = next;
+        }
+        return currentGroups;
+      };
+
+      let merged = applyMerge(groups);
+
+      // 強制結合 (MINを絶対満たしたい場合)
+      const forceMerge = (inputGroups: string[]) => {
         const next: string[] = [];
-        let i = 0;
-        while (i < partResult.length) {
-          let g = partResult[i];
-          if (g.length < MIN) {
-            if (i + 1 < partResult.length) { g = g + partResult[i + 1]; i += 2; }
-            else if (next.length > 0) { next[next.length - 1] += g; i++; continue; }
-            else { i++; }
-          } else { i++; }
+        let i = 0, offset = 0;
+        while (i < inputGroups.length) {
+          let g = inputGroups[i];
+          const endIdx = offset + g.length - 1;
+          const mustSplit = mandatorySplit.has(endIdx);
+          const canSplit = !forbiddenSplit.has(endIdx);
+          if (!mustSplit && (g.length < MIN || !canSplit)) {
+            if (i + 1 < inputGroups.length) { 
+              g += inputGroups[i + 1]; 
+              offset += g.length; i += 2; 
+            } else if (next.length > 0) { 
+              next[next.length - 1] += g; 
+              offset += g.length; i++; continue; 
+            } else { offset += g.length; i++; }
+          } else { offset += g.length; i++; }
           next.push(g);
         }
-        partResult = next;
-      }
+        return next;
+      };
+      merged = forceMerge(merged);
 
-      // MAX超え強制分割用関数
-      const smartSplit = (text: string, maxLen: number): string[] => {
+      // --- Split (MAX超え) ---
+      const smartSplit = (text: string, maxLen: number, startIdxOffset: number): string[] => {
         const parts: string[] = [];
-        let temp = text;
+        let temp = text, currentOffset = startIdxOffset;
         while (temp.length > maxLen) {
           let splitLen = maxLen;
           if (temp.length < maxLen + MIN) splitLen = Math.floor(temp.length / 2);
           let j = splitLen;
-          while (j > 1 && SMALL_CHARS.test(temp[j])) j--;
+          while (j > 1 && (SMALL_CHARS.test(temp[j]) || forbiddenSplit.has(currentOffset + j - 1))) j--;
+          if (j <= 1) {
+             j = splitLen;
+             while (j < temp.length && (SMALL_CHARS.test(temp[j]) || forbiddenSplit.has(currentOffset + j - 1))) j++;
+             if (j >= temp.length) break;
+          }
           parts.push(temp.slice(0, j));
           temp = temp.slice(j);
+          currentOffset += j;
         }
         if (temp) parts.push(temp);
         return parts;
       };
 
-      const finalPart = partResult.flatMap(r => smartSplit(r, MAX));
-      results.push(...finalPart);
-
+      const finalResult: string[] = [];
+      let finalOffset = 0;
+      for (const g of merged) {
+        finalResult.push(...smartSplit(g, MAX, finalOffset));
+        finalOffset += g.length;
+      }
+      results.push(...finalResult);
     } catch (e) {
-      console.warn('kuromoji error for part, fallback:', e);
+      console.warn('kuromoji error fallback:', e);
       results.push(part);
     }
   }
-
   return results;
 }
 
@@ -203,14 +314,15 @@ export function toChunks(jsonLines: ParsedLine[]): Chunk[] {
   const result: Chunk[] = [];
   jsonLines.forEach((line, lineIdx) => {
     if (!line.rawWord.trim() || line.isEnd) return;
+    const t = Math.round(line.timeMs); // Round float
     line.words
       .filter(text => text.trim().length > 0)
       .forEach((text, idx) => {
         result.push({
           text,
-          timeMs: line.timeMs,
+          timeMs: t,
           isLineHead: idx === 0,
-          absLineIdx: lineIdx // オリジナルの行番号を保持
+          absLineIdx: lineIdx
         });
       });
   });
@@ -222,23 +334,17 @@ export function buildDisplayLines(chunks: Chunk[], lineMaxChars = 14): DisplayLi
   const lines: DisplayLine[] = [];
   let current: DisplayLine | null = null;
   let absCounter = 0;
-  let linesInCurrentOriginal = 0; // 現在の元データ行が何個の表示行に分割されたか
+  let linesInCurrentOriginal = 0;
 
   for (const chunk of chunks) {
-    if (chunk.isLineHead) {
-      linesInCurrentOriginal = 0;
-    }
-
+    if (chunk.isLineHead) linesInCurrentOriginal = 0;
     const currentLen = current?.chunks.reduce((s, c) => s + c.text.length, 0) ?? 0;
     const wouldOverflow = currentLen + chunk.text.length > lineMaxChars;
-    // 新しい行を開始すべきか
     const isNewOriginal = chunk.isLineHead;
     const shouldBreak = (wouldOverflow || isNewOriginal) && current !== null && current.chunks.length > 0;
 
     if (!current || shouldBreak) {
-      // すでに4行ある場合は、5行目を作らずに4行目に追加し続ける（文字数制限を突破）
       if (current && !isNewOriginal && linesInCurrentOriginal >= 4) {
-        // 新しい行を作らず、既存のcurrent(4行目)にマージされる
       } else {
         current = { timeMs: chunk.timeMs, chunks: [], absLineIdx: absCounter++ };
         lines.push(current);
@@ -253,41 +359,25 @@ export function buildDisplayLines(chunks: Chunk[], lineMaxChars = 14): DisplayLi
 // ⑤ DisplayLine配列 → DisplaySet配列
 export function buildDisplaySets(allLines: DisplayLine[], setMaxLines = 4): DisplaySet[] {
   const sets: DisplaySet[] = [];
-
-  // まず、DisplayLineを「元の歌詞の行（absLineIdx）」ごとにグループ化する
   const groups: DisplayLine[][] = [];
   allLines.forEach(line => {
     const originIdx = line.chunks[0].absLineIdx;
     let group = groups.find(g => g[0].chunks[0].absLineIdx === originIdx);
-    if (!group) {
-      group = [];
-      groups.push(group);
-    }
+    if (!group) { group = []; groups.push(group); }
     group.push(line);
   });
 
   let currentSet: DisplaySet | null = null;
-
   for (const group of groups) {
-    // 現在のセットの最後の行の開始時間を確認
-    const lastLineInSet = currentSet && currentSet.lines.length > 0
-      ? currentSet.lines[currentSet.lines.length - 1]
-      : null;
-
-    // 6秒以上離れているかチェック (isTooFar)
+    const lastLineInSet = currentSet?.lines[currentSet.lines.length - 1];
     const isTooFar = lastLineInSet && (group[0].timeMs - lastLineInSet.timeMs >= 6000);
-
-    // このグループ（1つの元歌詞行）を現在のセットに追加すると overflow するか？
     const willOverflow = currentSet && (currentSet.lines.length + group.length > setMaxLines);
-
     if (!currentSet || willOverflow || isTooFar) {
       currentSet = { timeMs: group[0].timeMs, lines: [] };
       sets.push(currentSet);
     }
-
     group.forEach(line => currentSet?.lines.push(line));
   }
-
   return sets;
 }
 // ============================================

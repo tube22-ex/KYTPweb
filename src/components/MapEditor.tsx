@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ParseResult, ParsedLine, DisplaySet, splitYomi, toChunks, buildDisplayLines, buildDisplaySets } from '../services/api';
 import { saveMapDataToCache } from '../services/sync';
+import { getGlobalRebuildRules, saveGlobalRebuildRules } from '../services/globalConfig';
 
 // ============================================================
 // 型定義
@@ -14,7 +15,7 @@ interface MapEditorProps {
   volume?: number;
 }
 
-interface EditableChunk { id: string; text: string; timeMs: number; }
+interface EditableChunk { id: string; text: string; timeMs: number; isLineHead?: boolean; }
 interface EditableLine { id: string; timeMs: number; chunks: EditableChunk[]; }
 interface EditableBlock { id: string; timeMs: number; lines: EditableLine[]; }
 interface DropTarget { blockId: string; lineId: string; insertBeforeChunkId: string | null; }
@@ -22,7 +23,7 @@ interface DropTarget { blockId: string; lineId: string; insertBeforeChunkId: str
 interface RegenHistoryEntry {
   id: string;
   timestamp: number;
-  params: { min: number; max: number; lineMaxChars: number; setMaxLines: number };
+  params: { min: number; max: number; lineMaxChars: number; setMaxLines: number; protectedWords?: string; separatedWords?: string };
   blocks: EditableBlock[];
 }
 
@@ -173,7 +174,7 @@ const toEditable = (data: ParseResult): EditableBlock[] =>
     id: uid(), timeMs: set.timeMs,
     lines: set.lines.map(line => ({
       id: uid(), timeMs: line.timeMs,
-      chunks: line.chunks.map(c => ({ id: uid(), text: c.text, timeMs: c.timeMs })),
+      chunks: line.chunks.map(c => ({ id: uid(), text: c.text, timeMs: c.timeMs, isLineHead: c.isLineHead })),
     })),
   }));
 
@@ -186,7 +187,12 @@ const buildResult = (blocks: EditableBlock[], title: string, artist: string, vid
       return {
         timeMs: b.timeMs,
         absLineIdx: absIdx,
-        chunks: l.chunks.map((c, ci) => ({ text: c.text, timeMs: b.timeMs, isLineHead: ci === 0, absLineIdx: absIdx })),
+        chunks: l.chunks.map((c) => ({
+          text: c.text,
+          timeMs: b.timeMs,
+          isLineHead: c.isLineHead || false,
+          absLineIdx: absIdx
+        })),
       };
     }),
   }));
@@ -264,13 +270,22 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
   const [activeDropTarget, setActiveDropTarget] = useState<DropTarget | null>(null);
 
   // 再生成
-  const [regenMin, setRegenMin] = useState(3);
-  const [regenMax, setRegenMax] = useState(14);
-  const [regenLineMaxChars, setRegenLineMaxChars] = useState(14);
-  const [regenSetMaxLines, setRegenSetMaxLines] = useState(4);
-  const [isRegenerating, setIsRegenerating] = useState(false);
   const [regenHistory, setRegenHistory] = useState<RegenHistoryEntry[]>(() => loadHistory(localMapId));
   const [showHistory, setShowHistory] = useState(false);
+
+  const lastParams = regenHistory[0]?.params;
+  const [regenMin, setRegenMin] = useState(lastParams?.min ?? 3);
+  const [regenMax, setRegenMax] = useState(lastParams?.max ?? 14);
+  const [regenLineMaxChars, setRegenLineMaxChars] = useState(lastParams?.lineMaxChars ?? 14);
+  const [regenSetMaxLines, setRegenSetMaxLines] = useState(lastParams?.setMaxLines ?? 4);
+  const [regenProtectedInput, setRegenProtectedInput] = useState(lastParams?.protectedWords ?? '');
+  const [regenSeparatedInput, setRegenSeparatedInput] = useState(lastParams?.separatedWords ?? '');
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  // 共有設定 (Firestore)
+  const [globalProtectedInput, setGlobalProtectedInput] = useState('');
+  const [globalSeparatedInput, setGlobalSeparatedInput] = useState('');
+  const [useGlobalRules, setUseGlobalRules] = useState(true);
 
   // 保存・バリデーション
   const [isSaving, setIsSaving] = useState(false);
@@ -291,6 +306,16 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
       editInputRef.current.select();
     }
   }, [editingChunkId]);
+
+  // ---- 共有設定の取得 ----
+  useEffect(() => {
+    getGlobalRebuildRules().then(rules => {
+      if (rules) {
+        setGlobalProtectedInput(rules.protectedWords || '');
+        setGlobalSeparatedInput(rules.separatedWords || '');
+      }
+    });
+  }, []);
 
   // ---- YouTube Player 初期化 ----
   // playerDivRef が確実に存在してから初期化するため useCallback + useEffect で管理
@@ -370,6 +395,38 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
       ...b, lines: b.lines.map(l => l.id !== lid ? l : { ...l, chunks: [...l.chunks, { id: uid(), text: 'テキスト', timeMs: l.timeMs }] })
     }));
 
+  const mergeChunkBackward = (bid: string, lid: string, cid: string) => {
+    setBlocks(p => p.map(b => b.id !== bid ? b : {
+      ...b, lines: b.lines.map(l => {
+        if (l.id !== lid) return l;
+        const idx = l.chunks.findIndex(c => c.id === cid);
+        if (idx <= 0) return l;
+        const prev = l.chunks[idx - 1];
+        const curr = l.chunks[idx];
+        const newChunks = [...l.chunks];
+        newChunks[idx - 1] = { ...prev, text: prev.text + curr.text };
+        newChunks.splice(idx, 1);
+        return { ...l, chunks: newChunks };
+      })
+    }));
+  };
+
+  const mergeChunkForward = (bid: string, lid: string, cid: string) => {
+    setBlocks(p => p.map(b => b.id !== bid ? b : {
+      ...b, lines: b.lines.map(l => {
+        if (l.id !== lid) return l;
+        const idx = l.chunks.findIndex(c => c.id === cid);
+        if (idx === -1 || idx >= l.chunks.length - 1) return l;
+        const curr = l.chunks[idx];
+        const next = l.chunks[idx + 1];
+        const newChunks = [...l.chunks];
+        newChunks[idx] = { ...curr, text: curr.text + next.text };
+        newChunks.splice(idx + 1, 1);
+        return { ...l, chunks: newChunks };
+      })
+    }));
+  };
+
   const addLine = (bid: string) => {
     const block = blocks.find(b => b.id === bid);
     const t = block ? block.timeMs : Math.floor(currentTime * 1000);
@@ -445,17 +502,27 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
     setIsRegenerating(true);
     try {
       let rawData = getRawCache(localMapId);
-      if (!rawData) {
+      if (!rawData || rawData.length === 0) {
+        // キャッシュ取得試行
         const res = await fetch(`https://ytyping.net/api/maps/${localMapId}/json`);
-        if (!res.ok) throw new Error('API取得失敗');
+        if (!res.ok) throw new Error('元データを取得できませんでした');
         rawData = await res.json() as RawApiLine[];
         setRawCache(localMapId, rawData);
       }
+      
+      const localPw = regenProtectedInput.split(/[,，、\s\n]+/).filter(s => s.trim().length > 0);
+      const globalPw = useGlobalRules ? globalProtectedInput.split(/[,，、\s\n]+/).filter(s => s.trim().length > 0) : [];
+      const pwList = [...new Set([...localPw, ...globalPw])];
+
+      const localSw = regenSeparatedInput.split(/[,，、\s\n]+/).filter(s => s.trim().length > 0);
+      const globalSw = useGlobalRules ? globalSeparatedInput.split(/[,，、\s\n]+/).filter(s => s.trim().length > 0) : [];
+      const swList = [...new Set([...localSw, ...globalSw])];
+
       const parsedLines: ParsedLine[] = await Promise.all(
         rawData.map(async (line, index) => ({
           timeMs: parseFloat(line.time) * 1000,
           lyrics: line.lyrics,
-          words: await splitYomi(line.lyrics, line.word, regenMin, regenMax),
+          words: await splitYomi(line.lyrics, line.word, regenMin, regenMax, pwList, swList),
           rawWord: line.word,
           isEnd: index === rawData!.length - 1 && line.lyrics === 'end' && (!line.word || line.word.trim() === ''),
           absLineIdx: index,
@@ -474,20 +541,37 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
       setBlocks(newBlocks);
       const entry: RegenHistoryEntry = {
         id: uid(), timestamp: Date.now(),
-        params: { min: regenMin, max: regenMax, lineMaxChars: regenLineMaxChars, setMaxLines: regenSetMaxLines },
+        params: { min: regenMin, max: regenMax, lineMaxChars: regenLineMaxChars, setMaxLines: regenSetMaxLines, protectedWords: regenProtectedInput, separatedWords: regenSeparatedInput },
         blocks: newBlocks,
       };
       const updated = [entry, ...regenHistory].slice(0, MAX_HIST);
       setRegenHistory(updated);
       saveHistory(localMapId, updated);
     } catch (e) { console.error(e); alert('再生成に失敗しました。'); }
-    finally { setIsRegenerating(false); }
+    finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  const handleSaveGlobalRules = async () => {
+    if (!window.confirm('現在の共有設定をFirestoreに保存しますか？（全譜面で共有されます）')) return;
+    try {
+      await saveGlobalRebuildRules({
+        protectedWords: globalProtectedInput,
+        separatedWords: globalSeparatedInput
+      });
+      alert('共有設定を保存しました');
+    } catch (e) {
+      alert('共有設定の保存に失敗しました');
+    }
   };
 
   const restoreFromHistory = (entry: RegenHistoryEntry) => {
     setBlocks(entry.blocks);
     setRegenMin(entry.params.min); setRegenMax(entry.params.max);
     setRegenLineMaxChars(entry.params.lineMaxChars); setRegenSetMaxLines(entry.params.setMaxLines);
+    setRegenProtectedInput(entry.params.protectedWords || '');
+    setRegenSeparatedInput(entry.params.separatedWords || '');
     setShowHistory(false);
   };
 
@@ -813,6 +897,8 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
                     </div>
                     <div className="text-[9px] font-mono text-green-400 mt-0.5">
                       MIN:{entry.params.min} MAX:{entry.params.max} line:{entry.params.lineMaxChars} set:{entry.params.setMaxLines}
+                      {entry.params.protectedWords && <div className="text-rose-300 truncate">PROT:{entry.params.protectedWords}</div>}
+                      {entry.params.separatedWords && <div className="text-blue-300 truncate">SEP:{entry.params.separatedWords}</div>}
                     </div>
                     <div className="text-[9px] text-zinc-500">{entry.blocks.length} blocks</div>
                   </button>
@@ -833,6 +919,67 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
                 <input type="range" min={min} max={max} value={val} onChange={e => set(Number(e.target.value))} className="w-full accent-rose-400 cursor-pointer" />
               </div>
             ))}
+
+            {/* 共有設定セクション */}
+            <div className="mt-4 pt-3 border-t border-zinc-700">
+              <label className="flex items-center gap-2 mb-2 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={useGlobalRules}
+                  onChange={e => setUseGlobalRules(e.target.checked)}
+                  className="w-3 h-3 accent-blue-500"
+                />
+                <span className="text-[10px] font-black text-zinc-400 group-hover:text-zinc-200 uppercase tracking-tighter">全譜面共有設定を適用する</span>
+              </label>
+              
+              <div className="flex flex-col gap-1 mb-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-zinc-500 uppercase italic text-[9px]">共有：分離禁止</span>
+                </div>
+                <textarea
+                  value={globalProtectedInput}
+                  onChange={e => setGlobalProtectedInput(e.target.value)}
+                  className="bg-zinc-800 text-zinc-300 font-bold text-[10px] px-2 py-1 outline-none border border-zinc-700 focus:border-zinc-500 min-h-[32px] resize-none custom-scrollbar"
+                  placeholder="全譜面で共有される単語"
+                />
+              </div>
+              <div className="flex flex-col gap-1 mb-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-zinc-500 uppercase italic text-[9px]">共有：結合禁止</span>
+                  <button 
+                    onClick={handleSaveGlobalRules}
+                    className="text-[9px] font-black bg-zinc-700 hover:bg-zinc-600 text-zinc-300 px-2 py-0.5 rounded transition-colors"
+                  >
+                    Firestoreに保存
+                  </button>
+                </div>
+                <textarea
+                  value={globalSeparatedInput}
+                  onChange={e => setGlobalSeparatedInput(e.target.value)}
+                  className="bg-zinc-800 text-zinc-300 font-bold text-[10px] px-2 py-1 outline-none border border-zinc-700 focus:border-zinc-500 min-h-[32px] resize-none custom-scrollbar"
+                  placeholder="全譜面で共有される単語"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1 my-2">
+              <span className="font-black text-rose-300 uppercase italic text-[10px]">分離禁止ワード（繋げたまま）</span>
+              <textarea
+                value={regenProtectedInput}
+                onChange={e => setRegenProtectedInput(e.target.value)}
+                className="bg-zinc-700 text-zinc-100 font-bold text-[11px] px-2 py-1.5 outline-none border border-zinc-600 focus:border-rose-400 min-h-[44px] resize-none custom-scrollbar"
+                placeholder="例: グラビティ, 太陽"
+              />
+            </div>
+            <div className="flex flex-col gap-1 mb-2">
+              <span className="font-black text-blue-300 uppercase italic text-[10px]">結合禁止ワード（必ず分ける）</span>
+              <textarea
+                value={regenSeparatedInput}
+                onChange={e => setRegenSeparatedInput(e.target.value)}
+                className="bg-zinc-700 text-zinc-100 font-bold text-[11px] px-2 py-1.5 outline-none border border-zinc-600 focus:border-blue-400 min-h-[44px] resize-none custom-scrollbar"
+                placeholder="例: れもん, チョコ"
+              />
+            </div>
             <button onClick={handleRegenerate} disabled={isRegenerating || !videoId}
               className="mt-1 px-3 py-1.5 bg-rose-500 hover:bg-rose-400 disabled:opacity-40 text-white font-black text-[11px] uppercase tracking-widest transition-colors active:scale-95">
               {isRegenerating ? '生成中...' : 'REGENERATE'}
@@ -896,7 +1043,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
                     <div className="flex items-center gap-1.5">
                       <button onClick={e => { e.stopPropagation(); delBlock(block.id); }}
                         className="text-[10px] font-black text-zinc-500 hover:text-rose-400 px-2 py-0.5 border border-zinc-600 hover:border-rose-400 transition-colors bg-zinc-800/50"
-                        title="ブロックを削除">
+                title="ブロックを削除">
                         ✕ 削除
                       </button>
                       <button onClick={e => { e.stopPropagation(); addLine(block.id); }}
@@ -935,25 +1082,52 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
                             <React.Fragment key={chunk.id}>
                               <div
                                 draggable={editingChunkId !== chunk.id}
-                                onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', chunk.id); dragRef.current = { chunk, fromLineId: line.id }; setIsDragging(true); }}
-                                onDragEnd={() => { dragRef.current = null; dropRef.current = null; setIsDragging(false); setActiveDropTarget(null); }}
-                                className="group"
-                                style={{ display: 'flex', alignItems: 'stretch', border: '1px solid #52525b', background: '#3f3f46', transition: 'opacity 0.1s' }}
+                                onDragStart={e => {
+                                  e.dataTransfer.effectAllowed = 'move';
+                                  e.dataTransfer.setData('text/plain', chunk.id);
+                                  dragRef.current = { chunk, fromLineId: line.id };
+                                  setIsDragging(true);
+                                }}
+                                onDragEnd={() => {
+                                  dragRef.current = null;
+                                  dropRef.current = null;
+                                  setIsDragging(false);
+                                  setActiveDropTarget(null);
+                                }}
+                                className={`group flex items-stretch border transition-opacity duration-100 ${chunk.isLineHead ? 'bg-indigo-700/60 border-indigo-400' : 'bg-zinc-700 border-zinc-500'}`}
+                                style={{ opacity: dragRef.current?.chunk.id === chunk.id ? 0.3 : 1 }}
                               >
-                                {/* ハンドル */}
-                                <div style={{ width: '14px', background: '#52525b', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', padding: '0 4px', borderRight: '1px solid #3f3f46', flexShrink: 0, cursor: 'grab' }}>
-                                  <div style={{ width: '6px', height: '1.5px', background: '#a1a1aa', borderRadius: '1px' }} />
-                                  <div style={{ width: '6px', height: '1.5px', background: '#a1a1aa', borderRadius: '1px' }} />
-                                  <div style={{ width: '6px', height: '1.5px', background: '#a1a1aa', borderRadius: '1px' }} />
+                                {/* 前に結合 */}
+                                {ci > 0 && (
+                                  <button
+                                    onClick={() => mergeChunkBackward(block.id, line.id, chunk.id)}
+                                    className="opacity-0 group-hover:opacity-100 w-4 bg-zinc-600/50 hover:bg-zinc-500 text-[9px] text-white transition-opacity"
+                                    title="前の単語と結合"
+                                  >◀</button>
+                                )}
+
+                                {/* 三本線ハンドル */}
+                                <div
+                                  className="flex flex-col items-center justify-center gap-0.5 px-1 bg-zinc-600/30 cursor-grab active:cursor-grabbing hover:bg-zinc-600/50 transition-colors"
+                                  title="ドラッグして移動"
+                                >
+                                  <div className="w-2 h-[1px] bg-zinc-400 rounded-full pointer-events-none" />
+                                  <div className="w-2 h-[1px] bg-zinc-400 rounded-full pointer-events-none" />
+                                  <div className="w-2 h-[1px] bg-zinc-400 rounded-full pointer-events-none" />
                                 </div>
                                 {editingChunkId === chunk.id ? (
-                                  <input ref={editInputRef} value={editingText}
+                                  <input
+                                    ref={editInputRef}
+                                    value={editingText}
                                     onChange={e => setEditingText(e.target.value)}
                                     onBlur={commitEdit}
                                     onKeyDown={e => {
                                       if (e.key === 'Enter') commitEdit();
                                       if (e.key === 'Escape') setEditingChunkId(null);
-                                      if (e.key === 'Backspace' && editingText === '') { delChunk(block.id, line.id, chunk.id); setEditingChunkId(null); }
+                                      if (e.key === 'Backspace' && editingText === '') {
+                                        delChunk(block.id, line.id, chunk.id);
+                                        setEditingChunkId(null);
+                                      }
                                     }}
                                     className="bg-zinc-600 text-white font-mono text-[13px] px-2 py-1 outline-none border-none"
                                     style={{ minWidth: `${Math.max((editingText.length + 1) * 13, 48)}px` }} />
@@ -963,6 +1137,14 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
                                     onClick={() => { setEditingChunkId(chunk.id); setEditingText(chunk.text); }}>
                                     {chunk.text}
                                   </span>
+                                )}
+                                {/* 後ろに結合 */}
+                                {ci < line.chunks.length - 1 && (
+                                  <button
+                                    onClick={() => mergeChunkForward(block.id, line.id, chunk.id)}
+                                    className="opacity-0 group-hover:opacity-100 w-4 bg-zinc-600/50 hover:bg-zinc-500 text-[9px] text-white transition-opacity border-l border-zinc-600"
+                                    title="後ろの単語と結合"
+                                  >▶</button>
                                 )}
                                 <button
                                   onClick={e => { e.stopPropagation(); delChunk(block.id, line.id, chunk.id); }}
