@@ -189,7 +189,7 @@ const buildResult = (blocks: EditableBlock[], title: string, artist: string, vid
         absLineIdx: absIdx,
         chunks: l.chunks.map((c) => ({
           text: c.text,
-          timeMs: b.timeMs,
+          timeMs: c.timeMs, // ブロック全体の時間ではなく、単語が持つ本来の時間を保持する
           isLineHead: c.isLineHead || false,
           absLineIdx: absIdx
         })),
@@ -521,25 +521,45 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
       }
 
       const resultBlocks: EditableBlock[] = [];
+
       // 1. 指定位置より前の行
       if (lidx > 0) {
         const linesA = b.lines.slice(0, lidx);
-        resultBlocks.push({ ...b, id: uid(), lines: linesA });
+        const timeA = linesA[0].chunks[0]?.timeMs ?? b.timeMs;
+        resultBlocks.push({
+          id: uid(),
+          timeMs: timeA,
+          lines: linesA.map(l => ({
+            ...l, id: uid(), timeMs: timeA,
+            chunks: l.chunks.map(c => ({ ...c, id: uid(), timeMs: timeA }))
+          }))
+        });
       }
 
-      // 2. 指定位置から次の青い単語の手前まで（ここを独立させる）
+      // 2. 指定位置から次の青い単語の手前まで
       const linesB = b.lines.slice(lidx, nextBlueLidx);
-      const originalTime = linesB[0].chunks[0]?.timeMs ?? b.timeMs;
+      const timeB = linesB[0].chunks[0]?.timeMs ?? b.timeMs;
       resultBlocks.push({
         id: uid(),
-        timeMs: originalTime,
-        lines: linesB.map(l => ({ ...l, timeMs: originalTime, chunks: l.chunks.map(c => ({ ...c, timeMs: originalTime })) }))
+        timeMs: timeB,
+        lines: linesB.map(l => ({
+          ...l, id: uid(), timeMs: timeB,
+          chunks: l.chunks.map(c => ({ ...c, id: uid(), timeMs: timeB }))
+        }))
       });
 
       // 3. 次の青い単語以降
       if (nextBlueLidx < b.lines.length) {
         const linesC = b.lines.slice(nextBlueLidx);
-        resultBlocks.push({ ...b, id: uid(), lines: linesC });
+        const timeC = linesC[0].chunks[0]?.timeMs ?? b.timeMs;
+        resultBlocks.push({
+          id: uid(),
+          timeMs: timeC,
+          lines: linesC.map(l => ({
+            ...l, id: uid(), timeMs: timeC,
+            chunks: l.chunks.map(c => ({ ...c, id: uid(), timeMs: timeC }))
+          }))
+        });
       }
 
       const res = [...prev];
@@ -614,14 +634,11 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
     if (!videoId) { alert('Video IDがありません。'); return; }
     setIsRegenerating(true);
     try {
-      let rawData = getRawCache(localMapId);
-      if (!rawData || rawData.length === 0) {
-        // キャッシュ取得試行
-        const res = await fetch(`https://ytyping.net/api/maps/${localMapId}/json`);
-        if (!res.ok) throw new Error('元データを取得できませんでした');
-        rawData = await res.json() as RawApiLine[];
-        setRawCache(localMapId, rawData);
-      }
+      // キャッシュを無視して最新のデータを取得
+      const res = await fetch(`https://ytyping.net/api/maps/${localMapId}/json`);
+      if (!res.ok) throw new Error('元データを取得できませんでした');
+      const rawData = await res.json() as RawApiLine[];
+      setRawCache(localMapId, rawData);
       
       const localPw = regenProtectedInput.split(/[,，、\s\n]+/).filter(s => s.trim().length > 0);
       const globalPw = useGlobalRules ? globalProtectedInput.split(/[,，、\s\n]+/).filter(s => s.trim().length > 0) : [];
@@ -632,25 +649,36 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
       const swList = [...new Set([...localSw, ...globalSw])];
 
       const parsedLines: ParsedLine[] = await Promise.all(
-        rawData.map(async (line, index) => ({
-          timeMs: parseFloat(line.time) * 1000,
-          lyrics: line.lyrics,
-          words: await splitYomi(line.lyrics, line.word, regenMin, regenMax, pwList, swList),
-          rawWord: line.word,
-          isEnd: index === rawData!.length - 1 && line.lyrics === 'end' && (!line.word || line.word.trim() === ''),
-          absLineIdx: index,
-        }))
+        rawData.map(async (line, index) => {
+          const tms = parseFloat(line.time) * 1000;
+          return {
+            timeMs: tms,
+            lyrics: line.lyrics,
+            words: await splitYomi(line.lyrics, line.word, regenMin, regenMax, pwList, swList),
+            rawWord: line.word,
+            isEnd: index === rawData!.length - 1 && line.lyrics === 'end' && (!line.word || line.word.trim() === ''),
+            absLineIdx: index,
+          };
+        })
       );
+
       const filteredLines = parsedLines.filter(l => !l.isEnd);
       const chunks = toChunks(filteredLines);
       const displayLines = buildDisplayLines(chunks, regenLineMaxChars);
       const newSets = buildDisplaySets(displayLines, regenSetMaxLines);
+
       for (const set of newSets) {
-        const t = set.lines[0]?.chunks[0]?.timeMs ?? 0;
-        set.timeMs = t;
+        // セット（BLOCK）自体の時間はその1行目の時間にする
+        const setTimeMs = set.lines[0]?.chunks[0]?.timeMs ?? 0;
+        set.timeMs = setTimeMs;
         for (const line of set.lines) {
-          line.timeMs = t;
-          // 各チャウンクの timeMs は、元のタイミングを保持するために上書きしない
+          // 各行自身の時間を、その行の先頭単語の本来の時間に「個別に」合わせる
+          const lineHeadTime = line.chunks[0]?.timeMs ?? setTimeMs;
+          line.timeMs = lineHeadTime;
+          // 各チャウンクの timeMs も、元のタイミングを保持する
+          for (const c of line.chunks) {
+            if (c.timeMs === 0) c.timeMs = lineHeadTime;
+          }
         }
       }
       const newBlocks = toEditable({ lines: parsedLines, displaySets: newSets });

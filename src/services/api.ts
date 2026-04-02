@@ -315,12 +315,13 @@ export function toChunks(jsonLines: ParsedLine[]): Chunk[] {
   jsonLines.forEach((line, lineIdx) => {
     if (!line.rawWord.trim() || line.isEnd) return;
     const t = Math.round(line.timeMs); // Round float
+    
     line.words
       .filter(text => text.trim().length > 0)
       .forEach((text, idx) => {
         result.push({
           text,
-          timeMs: t,
+          timeMs: t, // ここで1行の時間を各単語に分配する
           isLineHead: idx === 0,
           absLineIdx: lineIdx
         });
@@ -441,17 +442,12 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
   const displayLines = buildDisplayLines(chunks);
   const displaySets = buildDisplaySets(displayLines);
 
-  // displaySets の全行・全チャンクの timeMs を
-  // セットの1行目の timeMs に統一する
+  // displaySets のセット自体の timeMs は
+  // セットの1行目の timeMs にしておく (BLOCK時間の表示用)
   for (const set of displaySets) {
     const setTimeMs = set.lines[0]?.chunks[0]?.timeMs ?? 0;
     set.timeMs = setTimeMs;
-    for (const line of set.lines) {
-      line.timeMs = setTimeMs;
-      for (const chunk of line.chunks) {
-        chunk.timeMs = setTimeMs;
-      }
-    }
+    // 個別の line.timeMs や chunk.timeMs は、元歌詞の時間を保持するため上書きしない
   }
 
   const result = {
