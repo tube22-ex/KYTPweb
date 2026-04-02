@@ -350,7 +350,10 @@ export const updatePlayerCharacter = async (
 // ルーム操作
 // ============================================================
 
-export const resetRoom = async (roomId: string) => {
+/**
+ * ルーム全体のプレイ状況をリセットします。
+ */
+export const resetRoomGameplayState = async (roomId: string) => {
   await update(ref(db, `rooms/${roomId}`), {
     status: "idle",
     startTime: null,
@@ -360,6 +363,28 @@ export const resetRoom = async (roomId: string) => {
     globalLineIdx: 0,
     globalChunkIdx: 0,
     mapId: null,
+    lastFailure: null,
+  });
+};
+
+/**
+ * プレイヤーのプレイ中データをリセットします（ゲーム終了時またはメニュー戻り時）。
+ */
+export const resetPlayerGameplayState = async (roomId: string, playerId: string) => {
+  await update(ref(db, `rooms/${roomId}/players/${playerId}`), {
+    currentLineIdx: 0,
+    currentWordIdx: 0,
+    currentChunkIdx: 0,
+    chunkProgress: 0,
+    combo: 0,
+    maxCombo: 0,
+    score: 0,
+    isFinished: false,
+    currentTyping: "",
+    currentWord: "",
+    speedSamples: [],
+    completedBlockIdx: -1,
+    isBufferReady: false,
   });
 };
 

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react'
 import { ParseResult } from '../services/api';
 import keygraph from '../utils/keygraph';
 import { sound, miss_sound, clear_sound, bad_sound } from '../utils/sound';
-import { updatePlayerProgress, updatePlayerSpeedSamples, updatePlayerCompletedBlock, RoomState, setRoomStartTime, getServerTimeOffset, incrementSharedScore, updateSharedCombo, updateGlobalProgress, updateRoomPlayback, determineHostId, updateRoomFailure, updatePlayerBufferReady, clearPlayerBufferReady } from '../services/sync';
+import { updatePlayerProgress, updatePlayerSpeedSamples, updatePlayerCompletedBlock, RoomState, setRoomStartTime, getServerTimeOffset, incrementSharedScore, updateSharedCombo, updateGlobalProgress, updateRoomPlayback, determineHostId, updateRoomFailure, updatePlayerBufferReady, clearPlayerBufferReady, resetRoomGameplayState, resetPlayerGameplayState } from '../services/sync';
 import { PlayerLane } from './PlayerLane';
 
 interface Props {
@@ -81,6 +81,24 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const speedSamplesRef = useRef<number[]>([]);
 
   const playerRef = useRef<any>(null);
+
+  // ★ メニューに戻る際のリセット処理
+  const handleBackToMenu = async () => {
+    try {
+      playerRef.current?.stopVideo();
+    } catch (_) { }
+
+    try {
+      if (isHost) {
+        await resetRoomGameplayState(roomId);
+      }
+      await resetPlayerGameplayState(roomId, playerId);
+    } catch (err) {
+      console.warn("Firebase reset failed:", err);
+    }
+    
+    onBackToMenu();
+  };
   const instanceIdRef = useRef<number>(0);
   const preparedRef = useRef<string>("");
 
@@ -91,6 +109,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   const lastSentPtrRef = useRef<number>(-1);
   const lastSentLineRef = useRef<number>(-1);
   const lastSentChunkRef = useRef<number>(-1);
+
+  // ★ 二重音防止フラグ
+  const justPlayedClearSoundRef = useRef<boolean>(false);
+  const justPlayedBadSoundRef = useRef<boolean>(false);
 
   const isStarted = roomState?.startTime != null;
 
@@ -285,10 +307,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     return () => clearInterval(int);
   }, [isStarted, isGameOver]);
 
-  // ★ ゲーム開始時に進捗比較基準をリセット（音の誤爆防止）
+  // ★ ゲーム開始時およびブロック切り替え時に進捗比較基準をリセット（音の誤爆防止）
   useEffect(() => {
     if (isStarted && !isGameOver && roomState?.players) {
-      console.log('[Sync] Game started. Resetting progress baseline for sound logic.');
+      console.log(`[Sync] Baseline reset (Block: ${currentBlockIdx}).`);
       prevComboRef.current = roomState.sharedCombo || 0;
       
       const baseline: Record<string, { lineIdx: number; chunkIdx: number }> = {};
@@ -297,7 +319,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       }
       prevOtherPlayersProgressRef.current = baseline;
     }
-  }, [isStarted]);
+  }, [isStarted, currentBlockIdx]);
 
   // ★ ブロック切り替え＆ゲームオーバー監視（50ms）
   useEffect(() => {
@@ -736,6 +758,12 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       setBigComboVisible(true);
       if (bigComboTimerRef.current) clearTimeout(bigComboTimerRef.current);
       bigComboTimerRef.current = setTimeout(() => setBigComboVisible(false), 1200);
+
+      // 他プレイヤーがコンボを増やした場合のみ音を鳴らす（自分の分は handleKeydown で再生済み）
+      if (!justPlayedClearSoundRef.current) {
+        try { clear_sound.play(); } catch (_) { }
+      }
+      justPlayedClearSoundRef.current = false; // フラグをリセット
     }
 
     // ★ コンボ途切れ音
@@ -744,12 +772,19 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       setBigComboVisible(false);
       if (bigComboTimerRef.current) clearTimeout(bigComboTimerRef.current);
 
-      try {
-        const breakAudio = new Audio('/sounds/combo_break.mp3');
-        breakAudio.volume = typeof (window as any).clearVolume !== 'undefined'
-          ? (window as any).clearVolume : 1.0;
-        breakAudio.play();
-      } catch (_) { }
+      if (!justPlayedBadSoundRef.current) {
+        // ★ コンボが途切れた際にも bad_sound を鳴らす
+        try { bad_sound.play(); } catch (_) { }
+
+        try {
+          const breakAudio = new Audio('/sounds/combo_break.mp3');
+          const baseVol = typeof (window as any).clearVolume !== 'undefined'
+            ? (window as any).clearVolume : 1.0;
+          breakAudio.volume = baseVol;
+          breakAudio.play();
+        } catch (_) { }
+      }
+      justPlayedBadSoundRef.current = false; // フラグをリセット
     }
     prevComboRef.current = currentCombo;
   }, [roomState?.sharedCombo]);
@@ -861,8 +896,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
           // ★ 正解順の時のみ成功音を鳴らす
           if (judge === 'BAD') {
+            justPlayedBadSoundRef.current = true; // おそらくBAD判定＝ミス等ではないが、音が重ならないように
             try { bad_sound.play(); } catch (_) { }
           } else {
+            justPlayedClearSoundRef.current = true;
             try { clear_sound.play(); } catch (_) { }
           }
           
@@ -895,6 +932,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
           updateGlobalProgress(roomId, nl, nc);
         } else {
           // ★ 順序飛ばしの場合はコンボリセット
+          justPlayedBadSoundRef.current = true;
+          try { bad_sound.play(); } catch (_) { }
           updateSharedCombo(roomId, 0, rs?.maxSharedCombo || 0);
         }
 
@@ -1016,7 +1055,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
   // ============================================================
   const lastFailureTimestampRef = useRef<number>(0);
   useEffect(() => {
-    if (isHost) return; // ホストは判定時に直接セット済み
+    if (isHost || !isStarted) return; // ホストは判定時に直接セット済み & 開始前は実行しない
     const failure = roomState?.lastFailure;
     if (!failure) return;
     // 同じ失敗イベントを重複処理しないよう timestamp で制御
@@ -1079,11 +1118,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         // ★修正：進捗があった場合でも、ゲーム開始直後の同期ズレ（前回の残り値）による誤爆を防ぐ
         // currentBlockIdx === 0 のときは判定（showJudge）をスキップする
         if (advanced) {
-          // ★ 共有コンボがつながっている時のみ他人の進捗音を鳴らす
-          if (roomState?.sharedCombo && roomState.sharedCombo > 0) {
-            try { clear_sound.play(); } catch (_) { }
-          }
-
+          // ★ コンボ音の判定は sharedCombo の監視に一本化したため、ここでの clear_sound.play() は削除
+          
           if (currentBlockIdxRef.current > 0) { // 第1ブロック以降のみ判定を表示
             const completedChunkKey = `${prev.lineIdx}-${prev.chunkIdx}`;
             const nowVideoMs = currentTimeMsRef.current;
@@ -1412,7 +1448,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                   <div className="text-xs font-bold text-zinc-400 break-words">{mapData.artist || 'Unknown Artist'}</div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) { } onBackToMenu(); }}
+                  <button onClick={handleBackToMenu}
                     className="flex-1 bg-rose-400 text-white font-black rounded-none hover:bg-rose-500 shadow-sm transition-colors menu-button">MENU</button>
                   <button className="flex-1 bg-white border border-zinc-100 text-zinc-400 font-black rounded-none hover:bg-zinc-50 transition-colors help-button">ヘルプ</button>
                 </div>
@@ -1476,7 +1512,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                 </div>
               </div>
             )}
-            <button onClick={() => { try { playerRef.current?.stopVideo(); } catch (e) { } onBackToMenu(); }}
+            <button onClick={handleBackToMenu}
               className='bg-rose-500 hover:bg-rose-600 text-white font-black text-xl px-24 py-6 rounded-none shadow-2xl shadow-rose-200 transition-all hover:scale-110 active:scale-95'>
               ステージ選択に戻る
             </button>

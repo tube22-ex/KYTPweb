@@ -12,7 +12,7 @@ import {
   setRoomMapId,
   SlotId,
   getRoomState,
-  resetRoom,
+  resetRoomGameplayState,
   determineHostId,
   deleteRoomIfEmpty,
   subscribeToAllRooms,
@@ -252,7 +252,7 @@ export default function App() {
     isLeavingRef.current = true;
     const isHost = determineHostId(roomState?.players) === playerId;
     if (isHost && roomId) {
-      await resetRoom(roomId);
+      await resetRoomGameplayState(roomId);
     }
     setMapData(null);
     setTimeout(() => { isLeavingRef.current = false; }, 1000);

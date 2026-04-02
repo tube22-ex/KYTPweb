@@ -66,25 +66,6 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId, tar
                 YOU
               </div>
             )}
-            {/* ★ 共有コンボ表示 */}
-            {roomState.sharedCombo > 0 && (
-              <div 
-                className="flex items-baseline gap-0.5 animate-in zoom-in duration-300"
-                style={{
-                  fontFamily: "'M PLUS Rounded 1c', sans-serif",
-                  fontWeight: 900,
-                  fontStyle: 'italic',
-                  color: '#fff',
-                  textShadow: '0 0 10px rgba(0,0,0,0.5), 1px 1px 0 rgba(0,0,0,0.8)',
-                  WebkitTextStroke: '1px rgba(0,0,0,0.2)',
-                  fontSize: useGrid ? '14px' : '18px',
-                  marginBottom: '-4px'
-                }}
-              >
-                <span style={{ fontSize: '0.7em', color: p.color }}>COMBO</span>
-                <span className="animate-bounce" style={{ color: '#fff' }}>{roomState.sharedCombo}</span>
-              </div>
-            )}
           </div>
 
           {/* ★ キャラクター本体 */}
