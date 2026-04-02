@@ -419,79 +419,101 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
     }));
 
   const mergeChunkBackward = (bid: string, lid: string, cid: string) => {
-    setBlocks(p => p.map(b => b.id !== bid ? b : {
-      ...b, lines: b.lines.reduce((acc, l, lidx) => {
-        if (l.id !== lid) { acc.push(l); return acc; }
-        const cidx = l.chunks.findIndex(c => c.id === cid);
-        if (cidx > 0) {
-          // 同一行内
-          const prev = l.chunks[cidx - 1];
-          const curr = l.chunks[cidx];
-          const nextChunks = [...l.chunks];
-          nextChunks[cidx - 1] = { ...prev, text: prev.text + curr.text };
-          nextChunks.splice(cidx, 1);
-          acc.push({ ...l, chunks: nextChunks });
-        } else if (lidx > 0) {
-          // 前の行の最後と結合
-          const prevLine = acc[acc.length - 1];
-          const lastC = prevLine.chunks[prevLine.chunks.length - 1];
-          prevLine.chunks[prevLine.chunks.length - 1] = { ...lastC, text: lastC.text + l.chunks[0].text };
-          const nextChunks = l.chunks.slice(1);
-          if (nextChunks.length > 0) acc.push({ ...l, chunks: nextChunks });
-        } else {
-          acc.push(l);
+    setBlocks(prevBlocks => prevBlocks.map(block => {
+      if (block.id !== bid) return block;
+
+      const newLines: EditableLine[] = [];
+      for (let i = 0; i < block.lines.length; i++) {
+        const line = block.lines[i];
+        if (line.id !== lid) {
+          newLines.push(line);
+          continue;
         }
-        return acc;
-      }, [] as EditableLine[])
+
+        const cidx = line.chunks.findIndex(c => c.id === cid);
+        if (cidx > 0) {
+          // 同一行内で結合
+          const prevC = line.chunks[cidx - 1];
+          const currC = line.chunks[cidx];
+          const mergedChunk = { ...prevC, text: prevC.text + currC.text };
+          const updatedChunks = [...line.chunks];
+          updatedChunks.splice(cidx - 1, 2, mergedChunk);
+          newLines.push({ ...line, chunks: updatedChunks });
+        } else if (i > 0) {
+          // 前の行の末尾と結合
+          const lastLine = newLines[newLines.length - 1];
+          const lastC = lastLine.chunks[lastLine.chunks.length - 1];
+          const currC = line.chunks[0];
+          const mergedChunk = { ...lastC, text: lastC.text + currC.text };
+          
+          const updatedLastLineChunks = [...lastLine.chunks];
+          updatedLastLineChunks.splice(updatedLastLineChunks.length - 1, 1, mergedChunk);
+          newLines[newLines.length - 1] = { ...lastLine, chunks: updatedLastLineChunks };
+
+          const remainingChunks = line.chunks.slice(1);
+          if (remainingChunks.length > 0) {
+            newLines.push({ ...line, chunks: remainingChunks });
+          }
+        } else {
+          newLines.push(line);
+        }
+      }
+      return { ...block, lines: newLines };
     }));
   };
 
   const mergeChunkForward = (bid: string, lid: string, cid: string) => {
-    setBlocks(p => p.map(b => {
-      if (b.id !== bid) return b;
-      let targetLidx = b.lines.findIndex(l => l.id === lid);
-      if (targetLidx === -1) return b;
-      const l = b.lines[targetLidx];
-      const cidx = l.chunks.findIndex(c => c.id === cid);
-      if (cidx === -1) return b;
+    setBlocks(prevBlocks => prevBlocks.map(block => {
+      if (block.id !== bid) return block;
 
-      const newLines = [...b.lines];
-      if (cidx < l.chunks.length - 1) {
+      const targetLidx = block.lines.findIndex(l => l.id === lid);
+      if (targetLidx === -1) return block;
+      const line = block.lines[targetLidx];
+      const cidx = line.chunks.findIndex(c => c.id === cid);
+      if (cidx === -1) return block;
+
+      const newLines = [...block.lines];
+      if (cidx < line.chunks.length - 1) {
         // 同一行内
-        const curr = l.chunks[cidx];
-        const next = l.chunks[cidx + 1];
-        const nextChunks = [...l.chunks];
-        nextChunks[cidx] = { ...curr, text: curr.text + next.text };
-        nextChunks.splice(cidx + 1, 1);
-        newLines[targetLidx] = { ...l, chunks: nextChunks };
-      } else if (targetLidx < b.lines.length - 1) {
-        // 次の行の最初と結合
-        const nextLine = b.lines[targetLidx + 1];
-        const curr = l.chunks[cidx];
+        const currC = line.chunks[cidx];
+        const nextC = line.chunks[cidx + 1];
+        const mergedChunk = { ...currC, text: currC.text + nextC.text };
+        const updatedChunks = [...line.chunks];
+        updatedChunks.splice(cidx, 2, mergedChunk);
+        newLines[targetLidx] = { ...line, chunks: updatedChunks };
+      } else if (targetLidx < block.lines.length - 1) {
+        // 次の行の頭と結合
+        const nextLine = block.lines[targetLidx + 1];
+        const currC = line.chunks[cidx];
         const nextC = nextLine.chunks[0];
-        const nextLineChunks = [...nextLine.chunks];
-        nextLineChunks[0] = { ...curr, text: curr.text + nextC.text };
-        newLines[targetLidx + 1] = { ...nextLine, chunks: nextLineChunks };
-        const currLineChunks = l.chunks.slice(0, -1);
-        if (currLineChunks.length > 0) {
-          newLines[targetLidx] = { ...l, chunks: currLineChunks };
+        const mergedChunk = { ...currC, text: currC.text + nextC.text };
+
+        const updatedNextLineChunks = [...nextLine.chunks];
+        updatedNextLineChunks.splice(0, 1, mergedChunk);
+        newLines[targetLidx + 1] = { ...nextLine, chunks: updatedNextLineChunks };
+
+        const currentRemaining = line.chunks.slice(0, -1);
+        if (currentRemaining.length > 0) {
+          newLines[targetLidx] = { ...line, chunks: currentRemaining };
         } else {
           newLines.splice(targetLidx, 1);
         }
       } else {
-        // ブロックの最後の行の末尾 -> 新しい行を増やして移動
-        const curr = l.chunks[cidx];
-        const newLine: EditableLine = { id: uid(), timeMs: l.timeMs, chunks: [{ ...curr, id: uid() }] };
-        const currLineChunks = l.chunks.slice(0, -1);
-        if (currLineChunks.length > 0) {
-          newLines[targetLidx] = { ...l, chunks: currLineChunks };
+        // ブロック内の最後の行、かつ最後の単語の場合 -> 新しい行を増やして移動
+        const currC = line.chunks[cidx];
+        const currentRemaining = line.chunks.slice(0, -1);
+        const newLine: EditableLine = { id: uid(), timeMs: line.timeMs, chunks: [{ ...currC, id: uid() }] };
+
+        if (currentRemaining.length > 0) {
+          // 元の行は残り、新しく行を追加
+          newLines[targetLidx] = { ...line, chunks: currentRemaining };
           newLines.push(newLine);
         } else {
-          // もしその行に1語しかなかったら意味がないが、一応追加してカレントを消す
-          newLines.splice(targetLidx, 1, newLine);
+          // 元の行に1語しかなかった場合は、その行ごとそのままだがIDだけ変える（実質何もしないのと近いが実装上は通す）
+          newLines[targetLidx] = newLine;
         }
       }
-      return { ...b, lines: newLines };
+      return { ...block, lines: newLines };
     }));
   };
 
