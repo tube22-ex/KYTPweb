@@ -94,12 +94,17 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
   const isStarted = roomState?.startTime != null;
 
-  // ★ 依存配列を文字列キーにして、中身が同じなら再計算しない
-  const playerIdsKey = Object.keys(roomState?.players ?? {}).sort().join(',');
+  // ★ 依存配列をスロット順に並び替えて固定（PlayerLaneの表示順と一致させる）
+  const playerIdsKey = roomState?.players 
+    ? Object.values(roomState.players).sort((a, b) => (a.slotId || "").localeCompare(b.slotId || "")).map(p => p.id).join(',')
+    : playerId;
+
   const playerIds = useMemo(() => {
     if (!roomState || !roomState.players) return [playerId];
-    return Object.keys(roomState.players).sort();
-  }, [playerIdsKey, playerId]);
+    return Object.values(roomState.players)
+      .sort((a, b) => (a.slotId || "").localeCompare(b.slotId || ""))
+      .map(p => p.id);
+  }, [playerIdsKey, roomState?.players, playerId]);
 
   // ★ playerIds のref（ブロック切り替え時に最新値を同期的に参照）
   const playerIdsRef = useRef(playerIds);

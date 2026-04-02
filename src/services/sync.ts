@@ -58,6 +58,7 @@ export interface PlayerState {
   lastSeen: number;
   speedSamples?: number[];  // 各セットのchars/sec記録
   completedBlockIdx: number; // 最後に全担当行を打ち終えたブロック番号（未完了=-1）
+  characterId: string;       // キャラクターID
   isBufferReady?: boolean;   // プリロード同期フロー：動画バッファ完了フラグ
 }
 
@@ -188,7 +189,8 @@ const deleteFirestoreRoom = async (roomId: string): Promise<void> => {
 export const joinRoom = async (
   roomId: string,
   playerId: string,
-  playerName: string
+  playerName: string,
+  characterId: string = "chara1"
 ): Promise<{ color: string; isHost: boolean; slotId: SlotId }> => {
   console.log("joinRoom started:", { roomId, playerId, playerName });
 
@@ -222,7 +224,9 @@ export const joinRoom = async (
     currentWord: "",
     joinedAt: Date.now(),
     lastSeen: Date.now(),
+    speedSamples: [],
     completedBlockIdx: -1,
+    characterId,
   });
 
   // RDB切断時にプレイヤーを自動削除
@@ -329,6 +333,17 @@ export const updatePlayerHeartbeat = async (roomId: string, playerId: string) =>
 
 export const setPlayerFinished = async (roomId: string, playerId: string) => {
   await update(ref(db, `rooms/${roomId}/players/${playerId}`), { isFinished: true });
+};
+
+export const updatePlayerCharacter = async (
+  roomId: string,
+  playerId: string,
+  characterId: string
+) => {
+  await update(ref(db, `rooms/${roomId}/players/${playerId}`), {
+    characterId,
+    lastSeen: Date.now(),
+  });
 };
 
 // ============================================================

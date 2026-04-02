@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { MapLoader } from './components/MapLoader';
 import { TypingArea } from './components/TypingArea';
 import { PlayerLane } from './components/PlayerLane';
+import { CharacterSelector } from './components/CharacterSelector';
 import { MapEditor } from './components/MapEditor';
 import { ParseResult, fetchMapData } from './services/api';
 import {
@@ -55,6 +56,9 @@ export default function App() {
   const [inRoom, setInRoom] = useState(false);
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const [allRooms, setAllRooms] = useState<Record<string, RoomState> | null>(null);
+  const [selectedCharaId, setSelectedCharaId] = useState(() => {
+    return localStorage.getItem('kytp_character_id') || 'chara1';
+  });
 
   const [mySlotId, setMySlotId] = useState<SlotId | null>(null);
 
@@ -141,6 +145,10 @@ export default function App() {
     (window as any).missVolume = seVolume / 100;
   }, [seVolume]);
 
+  useEffect(() => {
+    localStorage.setItem('kytp_character_id', selectedCharaId);
+  }, [selectedCharaId]);
+
 
   useEffect(() => {
     localStorage.setItem('kytp_player_name', playerName);
@@ -210,7 +218,7 @@ export default function App() {
         return;
       }
 
-      const { slotId } = await joinRoom(idToJoin, playerId, playerName);
+      const { slotId } = await joinRoom(idToJoin, playerId, playerName, selectedCharaId);
       setMySlotId(slotId);
       setRoomId(idToJoin);
       setInRoom(true);
@@ -503,33 +511,44 @@ export default function App() {
                   <p className="text-[10px] text-rose-300 font-black uppercase tracking-[0.2em]">部屋名を入力して入室</p>
                 </div>
                 <div className="flex flex-col gap-4">
-                  <input
-                    type="text"
-                    placeholder="ルームID"
-                    value={roomInput}
-                    onChange={e => setRoomInput(e.target.value)}
-                    className="px-4 py-3 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black text-zinc-700 shadow-inner text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="プレイヤー名"
-                    value={playerName}
-                    onChange={e => setPlayerName(e.target.value)}
-                    className="px-4 py-3 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black text-zinc-700 shadow-inner text-sm"
-                  />
+                  {/* 1. 入室ボタンを一番上 */}
                   <button
                     onClick={() => handleJoin()}
                     className="w-full py-4 bg-rose-400 hover:bg-rose-500 text-white font-black shadow-lg transition-all active:scale-95 text-sm uppercase font-premium"
                   >
                     入室
                   </button>
-                  <div className="mt-8 pt-6 border-t border-zinc-100">
+
+                  {/* 2. ルームIDと名前 */}
+                  <div className="flex flex-col gap-2">
+                    <input
+                      type="text"
+                      placeholder="ルームID"
+                      value={roomInput}
+                      onChange={e => setRoomInput(e.target.value)}
+                      className="px-4 py-3 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black text-zinc-700 shadow-inner text-sm"
+                    />
+                    <input
+                      type="text"
+                      placeholder="プレイヤー名"
+                      value={playerName}
+                      onChange={e => setPlayerName(e.target.value)}
+                      className="px-4 py-3 rounded-none bg-zinc-50 border-2 border-zinc-100 focus:outline-none focus:border-rose-300 focus:bg-white transition-all font-black text-zinc-700 shadow-inner text-sm"
+                    />
+                  </div>
+
+                  {/* 3. 部屋一覧 */}
+                  <div className="pt-2 border-t border-zinc-100">
+                    <div className="flex items-center gap-1.5 mb-2 ml-1">
+                      <div className="w-1 h-3 bg-rose-300 rounded-full"></div>
+                      <h2 className="text-[9px] font-black text-rose-300 uppercase tracking-[0.2em] italic">Active Rooms</h2>
+                    </div>
                     {!allRooms || Object.keys(allRooms).length === 0 ? (
                       <div className="text-[10px] text-zinc-300 italic text-center py-4 bg-zinc-50 border border-dashed border-zinc-200">
                         現在稼働中の部屋はありません
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                      <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
                         {Object.entries(allRooms).map(([rid, state]) => {
                           const pCount = Object.keys(state.players || {}).length;
                           const isPlaying = state.status === 'playing';
@@ -544,20 +563,20 @@ export default function App() {
                                 }
                                 handleJoin(toDisplayRoomId(rid));
                               }}
-                              className={`group flex items-center justify-between p-3 border transition-all text-left ${
+                              className={`group flex items-center justify-between p-2 border transition-all text-left ${
                                 isPlaying 
                                   ? 'bg-zinc-50 border-zinc-200 cursor-not-allowed' 
                                   : 'bg-white border-zinc-100 hover:border-rose-200 hover:bg-rose-50/30'
                               }`}
                             >
                               <div className="flex flex-col">
-                                <span className={`text-xs font-black ${isPlaying ? 'text-zinc-400' : 'text-zinc-600 group-hover:text-rose-500'}`}># {toDisplayRoomId(rid)}</span>
-                                <span className={`text-[9px] font-bold ${isPlaying ? 'text-rose-500' : 'text-zinc-400'}`}>
+                                <span className={`text-[10px] font-black ${isPlaying ? 'text-zinc-400' : 'text-zinc-600 group-hover:text-rose-500'}`}># {toDisplayRoomId(rid)}</span>
+                                <span className={`text-[8px] font-bold ${isPlaying ? 'text-rose-500' : 'text-zinc-400'}`}>
                                   {isPlaying ? '🎮 プレイ中' : '⏳ 待機中'}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className={`text-[10px] font-black ${isPlaying ? 'text-zinc-300' : 'text-rose-300'}`}>{pCount} 名</span>
+                                <span className={`text-[9px] font-black ${isPlaying ? 'text-zinc-300' : 'text-rose-300'}`}>{pCount} 名</span>
                               </div>
                             </button>
                           );
@@ -565,13 +584,21 @@ export default function App() {
                       </div>
                     )}
                   </div>
+
+                  {/* 4. キャラ選択 */}
+                  <div className="pt-2 border-t border-zinc-100">
+                    <CharacterSelector 
+                      currentCharacterId={selectedCharaId}
+                      onSelect={setSelectedCharaId}
+                    />
+                  </div>
                 </div>
               </div>
             ) : (
               <div className="w-full flex flex-col h-full">
                 {!mapData ? (
                   <div className="w-full h-full flex flex-col min-h-0">
-                    <div className="flex-shrink-0 bg-white/60 backdrop-blur-md border-b border-rose-100 flex justify-center shadow-[0_10px_20px_rgba(255,133,161,0.05)]" style={{ padding: 0, marginBottom: '4px' }}>
+                    <div className="flex-shrink-0 bg-white/60 backdrop-blur-md border-b border-rose-100 flex flex-col items-center shadow-[0_10px_20px_rgba(255,133,161,0.05)]" style={{ padding: 0, marginBottom: '4px' }}>
                       <PlayerLane roomState={roomState} playerId={playerId} />
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
