@@ -14,10 +14,10 @@ export const CHARACTERS: Record<string, CharacterDefinition> = {
     id: "chara1",
     name: "キャラクター1",
     image: "/images/characters/chara1.png",
-    scale: 0.8,
-    taraiOffset: 60,
-    taraiScale: 1.0,
-    verticalOffset: 10,
+    scale: 0.8,         // 座っているので少し小さく
+    taraiOffset: 15,   // 位置が低めなのでプラス方向
+    taraiScale: 0.9,    // キャラに合わせて少し小さく
+    verticalOffset: 0,
     tagOffset: 55,
   },
   chara2: {
@@ -28,7 +28,7 @@ export const CHARACTERS: Record<string, CharacterDefinition> = {
     taraiOffset: 15,   // 位置が低めなのでプラス方向
     taraiScale: 0.9,    // キャラに合わせて少し小さく
     verticalOffset: 0,
-    tagOffset: 0,
+    tagOffset: 55,
   },
   chara3: {
     id: "chara3",
