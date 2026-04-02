@@ -18,7 +18,7 @@ interface MapEditorProps {
 interface EditableChunk { id: string; text: string; timeMs: number; isLineHead?: boolean; }
 interface EditableLine { id: string; timeMs: number; chunks: EditableChunk[]; }
 interface EditableBlock { id: string; timeMs: number; lines: EditableLine[]; }
-interface DropTarget { blockId: string; lineId: string; insertBeforeChunkId: string | null; }
+interface DropTarget { blockId: string; lineId: string; insertBeforeChunkId: string | null; isBetweenLines?: boolean; insertBeforeLineIdx?: number; }
 
 interface RegenHistoryEntry {
   id: string;
@@ -615,7 +615,7 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
     const drop = dropRef.current;
     if (!drag || !drop) return;
     const { chunk, fromLineId } = drag;
-    const { blockId: toBid, lineId: toLid, insertBeforeChunkId } = drop;
+    const { blockId: toBid, lineId: toLid, insertBeforeChunkId, isBetweenLines, insertBeforeLineIdx } = drop;
     setBlocks(prev => {
       let moved: EditableChunk | null = null;
       let next = prev.map(b => ({
@@ -631,6 +631,14 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
       const mc = moved as EditableChunk;
       next = next.map(b => {
         if (b.id !== toBid) return b;
+
+        if (isBetweenLines && insertBeforeLineIdx !== undefined) {
+          const newLine: EditableLine = { id: uid(), timeMs: mc.timeMs, chunks: [{ ...mc }] };
+          const newLines = [...b.lines];
+          newLines.splice(insertBeforeLineIdx, 0, newLine);
+          return { ...b, lines: newLines };
+        }
+
         const tl = b.lines.find(l => l.id === toLid);
         if (!tl) return { ...b, lines: [...b.lines, { id: toLid, timeMs: mc.timeMs, chunks: [{ ...mc }] }] };
         return {
@@ -785,6 +793,43 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
           transition: 'width 0.1s, background 0.1s', cursor: 'copy',
         }}
       />
+    );
+  };
+
+  const renderLineDropZone = (blockId: string, insertBeforeLineIdx: number) => {
+    const isActive = isDragging &&
+      activeDropTarget?.blockId === blockId &&
+      activeDropTarget?.isBetweenLines &&
+      activeDropTarget?.insertBeforeLineIdx === insertBeforeLineIdx;
+
+    return (
+      <div
+        onDragEnter={e => e.preventDefault()}
+        onDragOver={e => { 
+          if (!isDragging) return;
+          e.preventDefault(); e.stopPropagation(); 
+          const t: DropTarget = { blockId, lineId: '', insertBeforeChunkId: null, isBetweenLines: true, insertBeforeLineIdx }; 
+          dropRef.current = t; setActiveDropTarget(t); 
+        }}
+        onDragLeave={() => { dropRef.current = null; setActiveDropTarget(null); }}
+        onDrop={e => { e.preventDefault(); e.stopPropagation(); executeDrop(); }}
+        className="transition-all duration-150 relative"
+        style={{
+          height: isActive ? '18px' : '4px',
+          margin: isActive ? '2px 0' : '0',
+          background: isActive ? '#fb7185' : 'transparent',
+          borderRadius: '2px', 
+          cursor: isDragging ? 'copy' : 'default', 
+          zIndex: 10,
+          pointerEvents: isDragging ? 'auto' : 'none'
+        }}
+      >
+        {isActive && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-[10px] font-black text-rose-100 uppercase pointer-events-none tracking-widest">+ NEW LINE</span>
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -1221,11 +1266,13 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
 
                   {/* 行 */}
                   <div
-                    className="bg-zinc-900 p-2 flex flex-col gap-1"
+                    className="bg-zinc-900 p-2 flex flex-col gap-0"
                     onClick={() => scrollToNearestLine(block.timeMs)}
                   >
+                    {renderLineDropZone(block.id, 0)}
                     {block.lines.map((line, li) => (
-                      <div key={line.id} className="flex items-center gap-1.5 p-1.5 bg-zinc-800" style={{ minHeight: '40px' }}>
+                      <React.Fragment key={line.id}>
+                        <div className="flex items-center gap-1.5 p-1.5 bg-zinc-800" style={{ minHeight: '40px' }}>
                         {/* 行の時間 */}
                         {editingLineTimeId === line.id ? (
                           <input type="number" value={editingTimeValue}
@@ -1347,8 +1394,10 @@ export const MapEditor: React.FC<MapEditorProps> = ({ onClose, onSaved, initialD
                             className="hover:!text-green-400 hover:!border-green-700 transition-colors">+</button>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                      {renderLineDropZone(block.id, li + 1)}
+                    </React.Fragment>
+                  ))}
+                </div>
 
                 </div>
 
