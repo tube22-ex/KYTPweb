@@ -285,6 +285,20 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
     return () => clearInterval(int);
   }, [isStarted, isGameOver]);
 
+  // ★ ゲーム開始時に進捗比較基準をリセット（音の誤爆防止）
+  useEffect(() => {
+    if (isStarted && !isGameOver && roomState?.players) {
+      console.log('[Sync] Game started. Resetting progress baseline for sound logic.');
+      prevComboRef.current = roomState.sharedCombo || 0;
+      
+      const baseline: Record<string, { lineIdx: number; chunkIdx: number }> = {};
+      for (const [pid, p] of Object.entries(roomState.players)) {
+        baseline[pid] = { lineIdx: p.currentLineIdx, chunkIdx: p.currentChunkIdx };
+      }
+      prevOtherPlayersProgressRef.current = baseline;
+    }
+  }, [isStarted]);
+
   // ★ ブロック切り替え＆ゲームオーバー監視（50ms）
   useEffect(() => {
     if (!isStarted || isGameOver || !mapData.displaySets) return;
@@ -714,7 +728,22 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
   useEffect(() => {
     const currentCombo = roomState?.sharedCombo ?? 0;
-    if (prevComboRef.current > 0 && currentCombo === 0 && !blockChangingRef.current) {
+    const prevCombo = prevComboRef.current;
+
+    // ★ コンボ増加演出（自分でも他人でも）
+    if (currentCombo > prevCombo) {
+      setBigComboValue(currentCombo);
+      setBigComboVisible(true);
+      if (bigComboTimerRef.current) clearTimeout(bigComboTimerRef.current);
+      bigComboTimerRef.current = setTimeout(() => setBigComboVisible(false), 1200);
+    }
+
+    // ★ コンボ途切れ音
+    if (prevCombo > 0 && currentCombo === 0 && !blockChangingRef.current) {
+      // コンボが途切れたら即座にアニメーションを消す
+      setBigComboVisible(false);
+      if (bigComboTimerRef.current) clearTimeout(bigComboTimerRef.current);
+
       try {
         const breakAudio = new Audio('/sounds/combo_break.mp3');
         breakAudio.volume = typeof (window as any).clearVolume !== 'undefined'
@@ -790,13 +819,8 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       const isFinished = keygraph.is_finished();
       if (isFinished) {
         setComboAnimKey(k => k + 1);
-        // ★ ビッグコンボ表示
-        const newCombo = (roomStateRef.current?.sharedCombo || 0) + 1;
-        setBigComboValue(newCombo);
-        setBigComboVisible(true);
-        if (bigComboTimerRef.current) clearTimeout(bigComboTimerRef.current);
-        bigComboTimerRef.current = setTimeout(() => setBigComboVisible(false), 1200);
         const comboAfterIncrement = (rs?.sharedCombo || 0) + 1;
+        // setBigComboValue と setBigComboVisible は sharedCombo の監視 useEffect に一本化するため削除
         const mult = getComboMultiplier(comboAfterIncrement);
 
         const currentLine = currentLineRef.current!;
@@ -825,24 +849,53 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         const chunkKey = `${currentLine.absLineIdx}-${currentChunkIdx}`;
         showJudge(judge, chunkKey);
 
-        // ★ BAD判定の場合はbad_soundを鳴らす、それ以外はclear_sound
-        if (judge === 'BAD') {
-          try { bad_sound.play(); } catch (_) { }
-        } else {
-          try { clear_sound.play(); } catch (_) { }
-        }
-
         const perfectBonus = judge === 'PERFECT' ? 5 : 0;
         const addScore = Math.round(10 * mult * speedMult) + perfectBonus;
         if (rs?.sharedScore !== undefined) incrementSharedScore(roomId, rs.sharedScore + addScore);
 
         const isCorrectOrder = currentLine.absLineIdx === gl && currentChunkIdx === gc;
         if (isCorrectOrder) {
+          // 正解順ならコンボ加算
           const combo = (rs?.sharedCombo || 0) + 1;
           updateSharedCombo(roomId, combo, Math.max(rs?.maxSharedCombo || 0, combo));
+
+          // ★ 正解順の時のみ成功音を鳴らす
+          if (judge === 'BAD') {
+            try { bad_sound.play(); } catch (_) { }
+          } else {
+            try { clear_sound.play(); } catch (_) { }
+          }
+          
           let nl = currentLine.absLineIdx, nc = currentChunkIdx + 1;
           if (nc >= currentLine.chunks.length) { nl++; nc = 0; }
+
+          // ★ オートアドバンス：既に完了されている単語をスキップ
+          const players = rs?.players || {};
+          const pids = playerIdsRef.current;
+          while (true) {
+            const lineInSet = currentSet?.lines.find(l => l.absLineIdx === nl);
+            if (!lineInSet) break;
+            if (nc >= lineInSet.chunks.length) { nl++; nc = 0; continue; }
+
+            const targetPid = getAssignedPlayerId(nl, pids);
+            const targetP = players[targetPid];
+            const isTargetFinished = targetP && (
+              (targetP.currentLineIdx === -1 && nl <= currentSet!.lines[currentSet!.lines.length - 1].absLineIdx) ||
+              (targetP.currentLineIdx !== -1 && targetP.currentLineIdx > nl) ||
+              (targetP.currentLineIdx === nl && targetP.currentChunkIdx > nc)
+            );
+
+            if (isTargetFinished) {
+              nc++;
+              if (nc >= lineInSet.chunks.length) { nl++; nc = 0; }
+            } else {
+              break;
+            }
+          }
           updateGlobalProgress(roomId, nl, nc);
+        } else {
+          // ★ 順序飛ばしの場合はコンボリセット
+          updateSharedCombo(roomId, 0, rs?.maxSharedCombo || 0);
         }
 
         let nextLineIdxForFirebase = currentLine.absLineIdx;
@@ -1026,15 +1079,12 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
         // ★修正：進捗があった場合でも、ゲーム開始直後の同期ズレ（前回の残り値）による誤爆を防ぐ
         // currentBlockIdx === 0 のときは判定（showJudge）をスキップする
         if (advanced) {
-          try { clear_sound.play(); } catch (_) { }
+          // ★ 共有コンボがつながっている時のみ他人の進捗音を鳴らす
+          if (roomState?.sharedCombo && roomState.sharedCombo > 0) {
+            try { clear_sound.play(); } catch (_) { }
+          }
 
           if (currentBlockIdxRef.current > 0) { // 第1ブロック以降のみ判定を表示
-            const newCombo = (roomStateRef.current?.sharedCombo || 0) + 1;
-            setBigComboValue(newCombo);
-            setBigComboVisible(true);
-            if (bigComboTimerRef.current) clearTimeout(bigComboTimerRef.current);
-            bigComboTimerRef.current = setTimeout(() => setBigComboVisible(false), 1200);
-
             const completedChunkKey = `${prev.lineIdx}-${prev.chunkIdx}`;
             const nowVideoMs = currentTimeMsRef.current;
             const setStartMs = currentSetRef.current?.timeMs ?? 0;
@@ -1305,24 +1355,26 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
                     </div>
                   )}
                 </div>
-                <div className="flex flex-col items-end" style={{ gap: 0 }}>
-                  <span className="text-[8px] font-black text-rose-100 uppercase italic text-right tracking-widest leading-none">Combo</span>
-                  <div key={comboAnimKey} className="flex items-baseline gap-0.5 combo-pop">
-                    <div className="text-xl font-black italic text-white leading-none">{currentCombo}</div>
-                    {multiplier > 1 && (
-                      <div key={`mult-${multiplier}`}
-                        className="text-sm font-black italic leading-none px-1.5 py-0.5 rounded-full animate-bounce"
-                        style={{
-                          background: multiplier >= 8 ? 'linear-gradient(135deg, #ff0080, #ff6600)'
-                            : multiplier >= 5 ? 'linear-gradient(135deg, #7c3aed, #e11d48)'
-                              : multiplier >= 4 ? 'linear-gradient(135deg, #0ea5e9, #7c3aed)'
-                                : multiplier >= 3 ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
-                                  : 'linear-gradient(135deg, #10b981, #3b82f6)',
-                          color: 'white', boxShadow: '0 0 15px rgba(255,255,255,0.4)', textShadow: '0 0 8px rgba(255,255,255,0.8)',
-                        }}>x{multiplier}</div>
-                    )}
+                {currentCombo > 0 && (
+                  <div className="flex flex-col items-end" style={{ gap: 0 }}>
+                    <span className="text-[8px] font-black text-rose-100 uppercase italic text-right tracking-widest leading-none">Combo</span>
+                    <div key={comboAnimKey} className="flex items-baseline gap-0.5 combo-pop">
+                      <div className="text-xl font-black italic text-white leading-none">{currentCombo}</div>
+                      {multiplier > 1 && (
+                        <div key={`mult-${multiplier}`}
+                          className="text-sm font-black italic leading-none px-1.5 py-0.5 rounded-full animate-bounce"
+                          style={{
+                            background: multiplier >= 8 ? 'linear-gradient(135deg, #ff0080, #ff6600)'
+                              : multiplier >= 5 ? 'linear-gradient(135deg, #7c3aed, #e11d48)'
+                                : multiplier >= 4 ? 'linear-gradient(135deg, #0ea5e9, #7c3aed)'
+                                  : multiplier >= 3 ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
+                                    : 'linear-gradient(135deg, #10b981, #3b82f6)',
+                            color: 'white', boxShadow: '0 0 15px rgba(255,255,255,0.4)', textShadow: '0 0 8px rgba(255,255,255,0.8)',
+                          }}>x{multiplier}</div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
             <div className="w-full flex shrink-0 score-video-area">
