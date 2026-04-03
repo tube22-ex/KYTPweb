@@ -55,11 +55,17 @@ function AppContent() {
 
   // Scaling Logic
   useLayoutEffect(() => {
+    // isAuthLoaded が false の間は rootRef.current が null のため、
+    // 真になった（＝メイン画面が表示された）タイミングで確実に計算を実行する
+    if (!isAuthLoaded) return;
+
     const updateScale = () => {
       if (!rootRef.current) return;
       // document.documentElement を使うことでスクロールバーの影響を抑えてより正確に計測
       const vw = document.documentElement.clientWidth;
       const vh = document.documentElement.clientHeight;
+      if (vw === 0 || vh === 0) return; // 画面幅が確定していない場合はスキップ
+
       const scaleX = vw / BASE_WIDTH;
       const scaleY = vh / BASE_HEIGHT;
       const scale = Math.min(scaleX, scaleY);
@@ -74,6 +80,8 @@ function AppContent() {
       document.body.style.margin = '0 auto';
       document.body.style.overflow = 'hidden';
       document.body.style.position = 'relative';
+
+      console.log("[Scale] Updated:", { vw, vh, scale });
     };
 
     updateScale();
@@ -84,11 +92,12 @@ function AppContent() {
     });
     observer.observe(document.documentElement);
     
-    // 初回マウント直後の微調整 (CSS適用やフォントロード待ち対策)
+    // 画面切り替え直後や CSS/フォントロード待ちのための微調整
     const timers = [
       setTimeout(updateScale, 50),
-      setTimeout(updateScale, 150),
-      setTimeout(updateScale, 500)
+      setTimeout(updateScale, 200),
+      setTimeout(updateScale, 400),
+      setTimeout(updateScale, 1000) // 最終的な安定化
     ];
     
     window.addEventListener('resize', updateScale);
@@ -97,7 +106,7 @@ function AppContent() {
       timers.forEach(t => clearTimeout(t));
       window.removeEventListener('resize', updateScale);
     };
-  }, []);
+  }, [isAuthLoaded]); // isAuthLoaded の変化（＝メインUIのマウント）を捉える
 
   // Shortcut for Volume
   useEffect(() => {
