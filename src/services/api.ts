@@ -314,17 +314,23 @@ export async function splitYomi(
 // ③ JsonLine配列 → Chunk配列（フラット）
 export function toChunks(jsonLines: ParsedLine[]): Chunk[] {
   const result: Chunk[] = [];
+  let prevTimeMs = -1;
+
   jsonLines.forEach((line, lineIdx) => {
     if (!line.rawWord.trim() || line.isEnd) return;
-    const t = Math.round(line.timeMs); // Round float
+    const t = Math.round(line.timeMs);
     
+    // もし前の行と全く同じ時間（YouTubeの複数行キャプション等）なら、同じ元歌詞の続きとみなす
+    const isNewOriginalLyric = prevTimeMs === -1 || prevTimeMs !== t;
+    prevTimeMs = t;
+
     line.words
       .filter(text => text.trim().length > 0)
       .forEach((text, idx) => {
         result.push({
           text,
-          timeMs: t, // ここで1行の時間を各単語に分配する
-          isLineHead: idx === 0,
+          timeMs: t, 
+          isLineHead: idx === 0 && isNewOriginalLyric,
           absLineIdx: lineIdx
         });
       });
