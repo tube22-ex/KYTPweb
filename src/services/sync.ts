@@ -1,13 +1,38 @@
+import { localCache } from "./localCache";
 import {
   ref, onValue, set, update, get,
   onDisconnect, remove
 } from "firebase/database";
-import { db, fs } from "../configs/firebase";
+import { signInAnonymously, onAuthStateChanged } from "firebase/auth";
+import { db, fs, auth } from "../configs/firebase";
 import {
   doc, getDoc, setDoc, collection,
   getDocs, query, limit, runTransaction,
   writeBatch, updateDoc
 } from "firebase/firestore";
+
+// ============================================================
+// 認証 (Anonymous Auth)
+// ============================================================
+
+/**
+ * 匿名サインインを実行し、ユーザーUIDを返します。
+ */
+export const signIn = async (): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    onAuthStateChanged(auth, (user) => {
+      if (user) resolve(user.uid);
+    });
+    signInAnonymously(auth).catch(reject);
+  });
+};
+
+/**
+ * 現在ログインしているユーザーのUIDを取得します。
+ */
+export const getCurrentUid = (): string | null => {
+  return auth.currentUser?.uid || null;
+};
 
 // ============================================================
 // スロット定義
@@ -113,29 +138,40 @@ const initRoomSlots = async (roomId: string): Promise<void> => {
 
 /**
  * Firestoreトランザクションでスロットをアトミックに取得します。
+ * 「ゾンビ」スロット（RDB側に存在しないプレイヤーが占有しているスロット）の回収ロジックを含みます。
  */
 const acquireSlot = async (
   roomId: string,
   playerId: string
 ): Promise<SlotData> => {
+  // RDBに現在存在する全プレイヤーを取得（ゾンビ判定用）
+  const playersSnap = await get(ref(db, `rooms/${roomId}/players`));
+  const activePlayerIds = new Set(Object.keys(playersSnap.val() || {}));
+
   return await runTransaction(fs, async (tx) => {
     // 全スロットをトランザクション内で読み取り
     const slotDocs = await Promise.all(
       SLOT_CONFIG.map(s => tx.get(doc(fs, "rooms", roomId, "slots", s.slotId)))
     );
 
-    // 既に自分のスロットがあれば再利用（再接続対応）
+    // 1. 既に自分のスロットがあれば再利用（再接続対応）
     for (const d of slotDocs) {
       const data = d.data() as SlotData;
       if (data?.occupiedBy === playerId) return data;
     }
 
-    // 番号順に空きスロットを探す
+    // 2. 空きスロットまたは「ゾンビ」スロットを探す
     for (const d of slotDocs) {
       const data = d.data() as SlotData;
-      if (data && data.occupiedBy === null) {
-        tx.update(d.ref, { occupiedBy: playerId });
-        return { ...data, occupiedBy: playerId };
+      if (data) {
+        const isZombie = data.occupiedBy !== null && !activePlayerIds.has(data.occupiedBy);
+        if (data.occupiedBy === null || isZombie) {
+          if (isZombie) {
+            console.log(`[acquireSlot] Reclaiming zombie slot ${data.slotId} (was occupied by ${data.occupiedBy})`);
+          }
+          tx.update(d.ref, { occupiedBy: playerId });
+          return { ...data, occupiedBy: playerId };
+        }
       }
     }
 
@@ -553,15 +589,39 @@ export const saveMapDataToCache = async (mapId: string | number, data: any) => {
   await setDoc(doc(fs, "mapCache", String(mapId)), data);
 };
 
+import { ParseResult } from "./api";
+
 export const getAllCachedMaps = async (): Promise<any[]> => {
-  console.log("getAllCachedMaps called");
+  console.log("getAllCachedMaps called (Merged)");
   try {
+    // 1. IndexedDB から取得
+    const locals = await localCache.getAll();
+    
+    // 2. Firestore から取得 (最新50件)
     const snap = await getDocs(query(collection(fs, "mapCache"), limit(50)));
-    console.log("getAllCachedMaps success, count:", snap.docs.length);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const clouds = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // 3. マージ (ID重複排除)
+    const mapDict: Record<string, any> = {};
+    
+    // クラウド側を先に入れる
+    clouds.forEach((m: any) => {
+      mapDict[m.id] = m;
+    });
+    
+    // ローカル側で上書き (より新しい可能性があるため)
+    locals.forEach((m: any) => {
+      mapDict[m.id] = m;
+    });
+
+    const merged = Object.values(mapDict).sort((a: any, b: any) => 
+      ((b as ParseResult).timestamp || 0) - ((a as ParseResult).timestamp || 0)
+    );
+    console.log("getAllCachedMaps success, merged count:", merged.length);
+    return merged;
   } catch (err) {
-    console.error("getAllCachedMaps error:", err);
-    throw err;
+    console.warn("getAllCachedMaps (Merged) warning:", err);
+    return [];
   }
 };
 

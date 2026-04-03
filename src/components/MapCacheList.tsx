@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getAllCachedMaps } from '../services/sync';
 import { ParseResult } from '../services/api';
+import { useMultiplayer } from '../contexts/MultiplayerContext';
 
 interface MapCacheListProps {
   onSelect: (data: ParseResult, mapId: string) => void;
@@ -9,6 +10,7 @@ interface MapCacheListProps {
 }
 
 export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, onRequest, onEdit }) => {
+  const { isHost } = useMultiplayer();
   const [cachedMaps, setCachedMaps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +36,12 @@ export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, onRequest,
     };
     fetchCache();
   }, []);
+
+  // ... (omitted loading, error, empty states) ...
+
+  // ★ Inside the return loop:
+  // (lines 83-157 in original)
+  // ...
 
   if (loading) {
     return (
@@ -133,7 +141,7 @@ export const MapCacheList: React.FC<MapCacheListProps> = ({ onSelect, onRequest,
               )}
 
               {/* Edit Button (ホストのみ) */}
-              {onEdit && (
+              {(onEdit && isHost) && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

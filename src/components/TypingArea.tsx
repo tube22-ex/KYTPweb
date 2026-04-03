@@ -2,14 +2,12 @@ import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react'
 import { ParseResult } from '../services/api';
 import keygraph from '../utils/keygraph';
 import { sound, miss_sound, clear_sound, bad_sound } from '../utils/sound';
-import { updatePlayerProgress, updatePlayerSpeedSamples, updatePlayerCompletedBlock, RoomState, setRoomStartTime, getServerTimeOffset, incrementSharedScore, updateSharedCombo, updateGlobalProgress, updateRoomPlayback, determineHostId, updateRoomFailure, updatePlayerBufferReady, clearPlayerBufferReady, resetRoomGameplayState, resetPlayerGameplayState } from '../services/sync';
+import { updatePlayerProgress, updatePlayerSpeedSamples, updatePlayerCompletedBlock, setRoomStartTime, getServerTimeOffset, incrementSharedScore, updateSharedCombo, updateGlobalProgress, updateRoomPlayback, determineHostId, updateRoomFailure, updatePlayerBufferReady, clearPlayerBufferReady, resetRoomGameplayState, resetPlayerGameplayState } from '../services/sync';
 import { PlayerLane } from './PlayerLane';
+import { useMultiplayer } from '../contexts/MultiplayerContext';
 
 interface Props {
   mapData: ParseResult;
-  roomId: string;
-  playerId: string;
-  roomState: RoomState | null;
   onBackToMenu: () => void;
   onBlockChange: (idx: number) => void;
   onLineChange?: (lineIdx: number) => void;
@@ -41,7 +39,9 @@ const calcJudge = (remainMs: number, intervalMs: number): JudgeResult => {
   return 'BAD';
 };
 
-export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomState, onBackToMenu, onBlockChange, onLineChange, volume, hideVideo }) => {
+export const TypingArea: React.FC<Props> = ({ mapData, onBackToMenu, onBlockChange, onLineChange, volume, hideVideo }) => {
+  const { roomId, playerId, roomState, isHost } = useMultiplayer();
+  
   const [currentBlockIdx, setCurrentBlockIdx] = useState(0);
   const [currentLineIdx, setCurrentLineIdx] = useState(0);
   const [currentChunkIdx, setCurrentChunkIdx] = useState(0);
@@ -118,21 +118,19 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
 
   // ★ 依存配列をスロット順に並び替えて固定（PlayerLaneの表示順と一致させる）
   const playerIdsKey = roomState?.players 
-    ? Object.values(roomState.players).sort((a, b) => (a.slotId || "").localeCompare(b.slotId || "")).map(p => p.id).join(',')
+    ? Object.values(roomState.players).sort((a: any, b: any) => (a.slotId || "").localeCompare(b.slotId || "")).map((p: any) => p.id).join(',')
     : playerId;
 
   const playerIds = useMemo(() => {
     if (!roomState || !roomState.players) return [playerId];
     return Object.values(roomState.players)
-      .sort((a, b) => (a.slotId || "").localeCompare(b.slotId || ""))
-      .map(p => p.id);
+      .sort((a: any, b: any) => (a.slotId || "").localeCompare(b.slotId || ""))
+      .map((p: any) => p.id);
   }, [playerIdsKey, roomState?.players, playerId]);
 
   // ★ playerIds のref（ブロック切り替え時に最新値を同期的に参照）
   const playerIdsRef = useRef(playerIds);
   useEffect(() => { playerIdsRef.current = playerIds; }, [playerIds]);
-
-  const isHost = determineHostId(roomState?.players) === playerId;
 
   const getAssignedPlayerId = useMemo(() => {
     return (absLineIdx: number, pids: string[]) => {
@@ -1143,7 +1141,10 @@ export const TypingArea: React.FC<Props> = ({ mapData, roomId, playerId, roomSta
       <div className="w-full border-4 border-white rounded-none bg-white/5 backdrop-blur-sm p-0 flex flex-col h-full overflow-hidden">
 
         <div className="w-full bg-white/10 border-b-2 border-white/20 flex-shrink-0 stage-container" style={{ position: 'relative' }}>
-          <PlayerLane roomState={roomState} playerId={playerId} taraiPlayers={taraiPlayers} badShakePlayers={badShakePlayers} />
+          <PlayerLane 
+            taraiPlayers={taraiPlayers} 
+            badShakePlayers={badShakePlayers} 
+          />
 
           {/* ★ ビッグコンボ表示 */}
           {bigComboVisible && (

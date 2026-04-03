@@ -1,15 +1,15 @@
 import React from 'react';
-import { RoomState, determineHostId } from '../services/sync';
+import { determineHostId } from '../services/sync';
 import { CHARACTERS, DEFAULT_CHARACTER_ID } from '../constants/characters';
+import { useMultiplayer } from '../contexts/MultiplayerContext';
 
 interface PlayerLaneProps {
-  roomState: RoomState | null;
-  playerId: string;
   taraiPlayers?: Set<string>;    // たらいを降らせるプレイヤーIDセット
   badShakePlayers?: Set<string>; // BAD判定シェイクするプレイヤーIDセット
 }
 
-export const PlayerLane: React.FC<PlayerLaneProps> = ({ roomState, playerId, taraiPlayers, badShakePlayers }) => {
+export const PlayerLane: React.FC<PlayerLaneProps> = ({ taraiPlayers, badShakePlayers }) => {
+  const { roomState, playerId } = useMultiplayer();
   if (!roomState || !roomState.players) return null;
 
   // プレイヤーを slotId 順に並び替えて、全クライアントで順番を一致させる

@@ -1,5 +1,6 @@
 import kuromoji from 'kuromoji';
 import { saveMapDataToCache, getCachedMapData } from './sync';
+import { localCache } from './localCache';
 // ============================================
 // Kuromoji Dict Load Fix (Vite/Browser)
 // ============================================
@@ -55,6 +56,7 @@ export interface ParseResult {
   videoId?: string; // YouTube動画ID
   title?: string;
   artist?: string;
+  timestamp?: number;
 }
 
 // ============================================
@@ -384,17 +386,33 @@ export function buildDisplaySets(allLines: DisplayLine[], setMaxLines = 4): Disp
 // ============================================
 
 export const fetchMapData = async (mapId: string | number): Promise<ParseResult> => {
-  // 1. キャッシュをチェック (編集済みのデータを優先的に返す)
+  const sMapId = String(mapId);
+
+  // 1. ローカルキャッシュ (IndexedDB) を最優先でチェック
   try {
-    const cached = await getCachedMapData(String(mapId));
+    const local = await localCache.get(sMapId);
+    if (local && local.displaySets) {
+      console.log('[LocalCache] Using IndexedDB for:', mapId);
+      return local as ParseResult;
+    }
+  } catch (err) {
+    console.warn('[LocalCache] Get failed:', err);
+  }
+
+  // 2. クラウドキャッシュ (Firestore) をチェック (他プレイヤーの編集反映用)
+  try {
+    const cached = await getCachedMapData(sMapId);
     if (cached && (cached as any).displaySets) {
-      console.log('Using cached map data for:', mapId);
+      console.log('[CloudCache] Using Firestore for:', mapId);
+      // ローカルにも保存しておく
+      localCache.set(sMapId, cached).catch(console.error);
       return cached as ParseResult;
     }
   } catch (err) {
-    console.warn('Failed to fetch from cache:', err);
+    console.warn('[CloudCache] Get failed:', err);
   }
 
+  // 3. 通常のフェッチ & パース
   const response = await fetch(`https://ytyping.net/api/maps/${mapId}/json`);
   if (!response.ok) {
     throw new Error(`Failed to fetch map data: ${response.statusText}`);
@@ -413,13 +431,7 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
     }))
   );
 
-  console.log('[api.ts] fetchMapData', {
-    totalLines: parsedLines.length,
-    endLineIdx: parsedLines.findIndex(l => l.isEnd),
-    firstFewLines: parsedLines.slice(0, 3)
-  });
-
-  // メタデータから動画IDを取得 (https://ytyping.net/api/maps/${mapId})
+  // メタデータから動画IDを取得
   let videoId = undefined;
   let title = undefined;
   let artist = undefined;
@@ -450,12 +462,13 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
     // 個別の line.timeMs や chunk.timeMs は、元歌詞の時間を保持するため上書きしない
   }
 
-  const result = {
+  const result: ParseResult = {
     lines: parsedLines,
     displaySets,
     videoId,
     title: title ? String(title) : undefined,
-    artist: artist ? String(artist) : undefined
+    artist: artist ? String(artist) : undefined,
+    timestamp: Date.now()
   };
 
   console.log('[api.ts] Final Check', {
