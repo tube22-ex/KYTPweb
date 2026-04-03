@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { MapLoader } from './components/MapLoader';
 import { TypingArea } from './components/TypingArea';
 import { PlayerLane } from './components/PlayerLane';
@@ -54,25 +54,49 @@ function AppContent() {
   const [activeBlockIdx, setActiveBlockIdx] = useState(0);
 
   // Scaling Logic
-  useEffect(() => {
+  useLayoutEffect(() => {
     const updateScale = () => {
       if (!rootRef.current) return;
-      const scaleX = window.innerWidth / BASE_WIDTH;
-      const scaleY = window.innerHeight / BASE_HEIGHT;
+      // document.documentElement を使うことでスクロールバーの影響を抑えてより正確に計測
+      const vw = document.documentElement.clientWidth;
+      const vh = document.documentElement.clientHeight;
+      const scaleX = vw / BASE_WIDTH;
+      const scaleY = vh / BASE_HEIGHT;
       const scale = Math.min(scaleX, scaleY);
+      
       rootRef.current.style.transform = `scale(${scale})`;
       rootRef.current.style.transformOrigin = 'top left';
       rootRef.current.style.width = `${BASE_WIDTH}px`;
       rootRef.current.style.height = `${BASE_HEIGHT}px`;
+      
       document.body.style.width = `${BASE_WIDTH * scale}px`;
       document.body.style.height = `${BASE_HEIGHT * scale}px`;
       document.body.style.margin = '0 auto';
       document.body.style.overflow = 'hidden';
       document.body.style.position = 'relative';
     };
+
     updateScale();
+    
+    // ResizeObserver でリサイズをより高精度に監視
+    const observer = new ResizeObserver(() => {
+      updateScale();
+    });
+    observer.observe(document.documentElement);
+    
+    // 初回マウント直後の微調整 (CSS適用やフォントロード待ち対策)
+    const timers = [
+      setTimeout(updateScale, 50),
+      setTimeout(updateScale, 150),
+      setTimeout(updateScale, 500)
+    ];
+    
     window.addEventListener('resize', updateScale);
-    return () => window.removeEventListener('resize', updateScale);
+    return () => {
+      observer.disconnect();
+      timers.forEach(t => clearTimeout(t));
+      window.removeEventListener('resize', updateScale);
+    };
   }, []);
 
   // Shortcut for Volume
