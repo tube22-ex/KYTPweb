@@ -1,6 +1,7 @@
 import kuromoji from 'kuromoji';
 import { saveMapDataToCache, getCachedMapData } from './sync';
 import { localCache } from './localCache';
+import { getGlobalRebuildRules } from './globalConfig';
 // ============================================
 // Kuromoji Dict Load Fix (Vite/Browser)
 // ============================================
@@ -426,11 +427,16 @@ export const fetchMapData = async (mapId: string | number): Promise<ParseResult>
 
   const data: YTypingLineRaw[] = await response.json();
 
+  // 共通ルールを取得
+  const globalRules = await getGlobalRebuildRules();
+  const protectedArr = globalRules?.protectedWords.split(',').map(s => s.trim()).filter(Boolean) || [];
+  const separatedArr = globalRules?.separatedWords.split(',').map(s => s.trim()).filter(Boolean) || [];
+
   const parsedLines: ParsedLine[] = await Promise.all(
     data.map(async (line, index) => ({
       timeMs: parseFloat(line.time) * 1000,
       lyrics: line.lyrics,
-      words: await splitYomi(line.lyrics, line.word),
+      words: await splitYomi(line.lyrics, line.word, 3, 14, protectedArr, separatedArr),
       rawWord: line.word,
       isEnd: (index === data.length - 1 && line.lyrics === 'end' && (!line.word || line.word.trim() === '')),
       absLineIdx: index
