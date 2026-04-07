@@ -29,11 +29,22 @@ if( keygraph.next(e.key) ){
 }
 */
 const keygraph = {
+    _buildCache: {},
     // キーチェインの作成、初期化
     build: function (seq) {
         // タイプする文字列の保存、入力補完の初期化
         this._seq = seq;
         // this._autocomplete_registered = [];
+
+        if (this._buildCache[seq]) {
+            const cached = this._buildCache[seq];
+            this._chain_head = cached.chain_head;
+            this._chains = cached.chains;
+            this._chain_cur = this._chain_head;
+            this._seq_ptr_cur = 0;
+            this._key_done = "";
+            return this._seq;
+        }
 
         // ヘッダー、フッターのチェインを作成する。
         this._chain_head = Object.create(this._chain_proto);
@@ -107,6 +118,12 @@ const keygraph = {
             // 処理をする場合は何もソートをしないようにする。
             open.sort((e0, e1) => e0.p - e1.p);
         }
+
+        // キャッシュに保存
+        this._buildCache[seq] = {
+            chain_head: this._chain_head,
+            chains: this._chains
+        };
 
         // 現在のタイプ位置のセット
         this._chain_cur = this._chain_head;

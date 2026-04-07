@@ -27,8 +27,13 @@ const getComboMultiplier = (combo: number): number => {
 type JudgeResult = 'PERFECT' | 'GOOD' | 'OK' | 'BAD';
 
 // ★ 半角英数字・記号を全角に変換（ひらがなと文字幅を揃える）
-const toFullWidth = (str: string): string =>
-  str.replace(/[!-~]/g, c => String.fromCharCode(c.charCodeAt(0) + 0xFEE0));
+const toFullWidthCache = new Map<string, string>();
+const toFullWidth = (str: string): string => {
+  if (toFullWidthCache.has(str)) return toFullWidthCache.get(str)!;
+  const res = str.replace(/[!-~]/g, c => String.fromCharCode(c.charCodeAt(0) + 0xFEE0));
+  toFullWidthCache.set(str, res);
+  return res;
+};
 
 const calcJudge = (remainMs: number, intervalMs: number): JudgeResult => {
   if (intervalMs <= 0) return 'BAD';
@@ -38,6 +43,117 @@ const calcJudge = (remainMs: number, intervalMs: number): JudgeResult => {
   if (ratio > 1 / 6) return 'OK';
   return 'BAD';
 };
+
+const LyricLineMemo = React.memo(({
+  line,
+  isLineActive,
+  linePlayerColor,
+  gl,
+  gc,
+  p,
+  isPreStart,
+  playerId,
+  currentLineAbsIdx,
+  keygraphPtr,
+  judgeChunkKey,
+  judgeResult
+}: {
+  line: any;
+  isLineActive: boolean;
+  linePlayerColor: string;
+  gl: number;
+  gc: number;
+  p: any;
+  isPreStart: boolean;
+  playerId: string;
+  currentLineAbsIdx?: number;
+  keygraphPtr: number;
+  judgeChunkKey: string | null;
+  judgeResult: JudgeResult | null;
+}) => {
+  return (
+    <div className={`lyric-line ${isLineActive ? 'active' : ''}`} style={{
+      color: linePlayerColor, borderLeftColor: linePlayerColor,
+      backgroundColor: isLineActive ? `${linePlayerColor}15` : 'transparent'
+    }}>
+      {line.chunks.map((chunk: any, cIdx: number) => {
+        let isChunkFinished = false, isChunkActive = false, charPtr = 0;
+        if (line.absLineIdx < gl || (line.absLineIdx === gl && cIdx < gc)) {
+          isChunkFinished = true;
+        } else if (p) {
+          const lineIsBeforeGlobal = line.absLineIdx < gl;
+          if ((p.currentLineIdx === -1 && lineIsBeforeGlobal) || (p.currentLineIdx !== -1 && line.absLineIdx < p.currentLineIdx)) {
+            isChunkFinished = true;
+          } else if (line.absLineIdx === p.currentLineIdx) {
+            if (cIdx < p.currentChunkIdx) { isChunkFinished = true; }
+            else if (cIdx === p.currentChunkIdx) {
+              isChunkActive = true;
+              if (p.id === playerId && line.absLineIdx === currentLineAbsIdx) {
+                charPtr = keygraphPtr;
+              } else { charPtr = (p.currentTyping || "").length; }
+            }
+          }
+        }
+        const thisChunkKey = `${line.absLineIdx}-${cIdx}`;
+        const isJudgeTarget = judgeChunkKey === thisChunkKey && judgeResult !== null;
+        return (
+          <span key={cIdx} style={{ position: 'relative', display: 'inline-block' }}>
+            {isJudgeTarget && (
+              <span style={{
+                position: 'absolute', top: 0, right: '1em', bottom: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                fontSize: '1.3em', fontWeight: 900, fontStyle: 'italic',
+                whiteSpace: 'nowrap', color: linePlayerColor,
+                textShadow: `0 0 8px ${linePlayerColor}, 0 0 20px ${linePlayerColor}, 0 0 40px ${linePlayerColor}, 2px 2px 0 rgba(0,0,0,0.6), -1px -1px 0 rgba(0,0,0,0.6)`,
+                WebkitTextStroke: `1px rgba(0,0,0,0.4)`,
+                pointerEvents: 'none', zIndex: 20,
+                animation: 'judgePopIn 0.15s ease-out forwards',
+                letterSpacing: '0.02em',
+              }}>
+                {judgeResult}
+              </span>
+            )}
+            {(Array.from(chunk.text) as string[]).map((char, charIdx) => {
+              const isCharFinished = isChunkFinished || (isChunkActive && charIdx < charPtr);
+              let className = '';
+              if (isCharFinished) className = 'opacity-30';
+              else if (isPreStart) className = 'opacity-0';
+              return <span key={charIdx} className={className}>{toFullWidth(char)}</span>;
+            })}
+            {cIdx < line.chunks.length - 1 && '　'}
+          </span>
+        );
+      })}
+    </div>
+  );
+}, (prevProps, nextProps) => {
+  if (
+    prevProps.isLineActive !== nextProps.isLineActive ||
+    prevProps.linePlayerColor !== nextProps.linePlayerColor ||
+    prevProps.gl !== nextProps.gl ||
+    prevProps.gc !== nextProps.gc ||
+    prevProps.isPreStart !== nextProps.isPreStart ||
+    prevProps.playerId !== nextProps.playerId ||
+    prevProps.currentLineAbsIdx !== nextProps.currentLineAbsIdx ||
+    prevProps.keygraphPtr !== nextProps.keygraphPtr ||
+    prevProps.judgeChunkKey !== nextProps.judgeChunkKey ||
+    prevProps.judgeResult !== nextProps.judgeResult ||
+    prevProps.line.absLineIdx !== nextProps.line.absLineIdx
+  ) {
+    return false;
+  }
+  if (!prevProps.p && !nextProps.p) return true;
+  if (!prevProps.p || !nextProps.p) return false;
+  if (
+    prevProps.p.currentLineIdx !== nextProps.p.currentLineIdx ||
+    prevProps.p.currentChunkIdx !== nextProps.p.currentChunkIdx ||
+    prevProps.p.id !== nextProps.p.id ||
+    prevProps.p.currentTyping !== nextProps.p.currentTyping
+  ) {
+    return false;
+  }
+  return true;
+});
 
 export const TypingArea: React.FC<Props> = ({ mapData, onBackToMenu, onBlockChange, onLineChange, volume, hideVideo }) => {
   const { roomId, playerId, roomState, isHost } = useMultiplayer();
@@ -649,23 +765,13 @@ export const TypingArea: React.FC<Props> = ({ mapData, onBackToMenu, onBlockChan
   // ============================================================
 
 
-  const allFinishedCacheRef = useRef<{ key: string; result: boolean }>({ key: '', result: false });
   const allFinished = useMemo(() => {
     if (!currentSet || !roomState?.players) return false;
-    // プレイヤーの進捗に関わる値だけでキーを作る
-    const key = currentSet.lines.map(line => {
-      const pid = getAssignedPlayerId(line.absLineIdx, playerIds);
-      const u = roomState.players[pid];
-      return `${pid}:${u?.currentLineIdx ?? 'x'}`;
-    }).join('|');
-    if (key === allFinishedCacheRef.current.key) return allFinishedCacheRef.current.result;
-    const result = currentSet.lines.every(line => {
+    return currentSet.lines.every(line => {
       const pid = getAssignedPlayerId(line.absLineIdx, playerIds);
       const u = roomState.players[pid];
       return u && (u.currentLineIdx === -1 || u.currentLineIdx > line.absLineIdx);
     });
-    allFinishedCacheRef.current = { key, result };
-    return result;
   }, [currentSet, roomState?.players, playerIds, getAssignedPlayerId]);
 
   const nextSet = useMemo(() => {
@@ -1277,7 +1383,7 @@ export const TypingArea: React.FC<Props> = ({ mapData, onBackToMenu, onBlockChan
         {!isGameOver && (
           <div className="w-full flex flex-col gap-0">
             <div className="lyrics-area scrollbar-hide" ref={lyricsAreaRef} data-typing-progress={inputCount} style={{ fontSize: '1.6em' }}>
-              {currentSet?.lines.map((line: any, idx: number) => {
+              {currentSet?.lines.map((line: any) => {
                 const globalLineIdx = roomState?.globalLineIdx ?? 0;
                 const nowMs = currentTimeMsRef.current;
                 const isPreStart = nowMs < (currentSet?.timeMs ?? 0);
@@ -1285,65 +1391,21 @@ export const TypingArea: React.FC<Props> = ({ mapData, onBackToMenu, onBlockChan
                 const linePlayerId = getAssignedPlayerId(line.absLineIdx, playerIds);
                 const linePlayerColor = roomState?.players?.[linePlayerId]?.color || '#e0195a';
                 return (
-                  <div key={idx} className={`lyric-line ${isLineActive ? 'active' : ''}`} style={{
-                    color: linePlayerColor, borderLeftColor: linePlayerColor,
-                    backgroundColor: isLineActive ? `${linePlayerColor}15` : 'transparent'
-                  }}>
-                    {line.chunks.map((chunk: any, cIdx: number) => {
-                      const gl = roomState?.globalLineIdx ?? 0;
-                      const gc = roomState?.globalChunkIdx ?? 0;
-                      const p = roomState?.players?.[linePlayerId];
-                      let isChunkFinished = false, isChunkActive = false, charPtr = 0;
-                      if (line.absLineIdx < gl || (line.absLineIdx === gl && cIdx < gc)) {
-                        isChunkFinished = true;
-                      } else if (p) {
-                        // currentLineIdx=-1 は「現ブロック全担当行完了」を意味するが、
-                        // 前回ゲームの残り値の可能性もあるため、globalLineIdx より
-                        // 前の行にのみ適用する（現ブロック範囲外なら無視）
-                        const lineIsBeforeGlobal = line.absLineIdx < gl;
-                        if ((p.currentLineIdx === -1 && lineIsBeforeGlobal) || (p.currentLineIdx !== -1 && line.absLineIdx < p.currentLineIdx)) {
-                          isChunkFinished = true;
-                        } else if (line.absLineIdx === p.currentLineIdx) {
-                          if (cIdx < p.currentChunkIdx) { isChunkFinished = true; }
-                          else if (cIdx === p.currentChunkIdx) {
-                            isChunkActive = true;
-                            if (p.id === playerId && line.absLineIdx === currentLine?.absLineIdx) {
-                              charPtr = (keygraph as any)._seq_ptr_cur;
-                            } else { charPtr = (p.currentTyping || "").length; }
-                          }
-                        }
-                      }
-                      const thisChunkKey = `${line.absLineIdx}-${cIdx}`;
-                      const isJudgeTarget = judgeChunkKey === thisChunkKey && judgeResult !== null;
-                      return (
-                        <span key={cIdx} style={{ position: 'relative', display: 'inline-block' }}>
-                          {isJudgeTarget && (
-                            <span style={{
-                              position: 'absolute', top: 0, right: '1em', bottom: 0,
-                              display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-                              fontSize: '1.3em', fontWeight: 900, fontStyle: 'italic',
-                              whiteSpace: 'nowrap', color: linePlayerColor,
-                              textShadow: `0 0 8px ${linePlayerColor}, 0 0 20px ${linePlayerColor}, 0 0 40px ${linePlayerColor}, 2px 2px 0 rgba(0,0,0,0.6), -1px -1px 0 rgba(0,0,0,0.6)`,
-                              WebkitTextStroke: `1px rgba(0,0,0,0.4)`,
-                              pointerEvents: 'none', zIndex: 20,
-                              animation: 'judgePopIn 0.15s ease-out forwards',
-                              letterSpacing: '0.02em',
-                            }}>
-                              {judgeResult}
-                            </span>
-                          )}
-                          {(Array.from(chunk.text) as string[]).map((char, charIdx) => {
-                            const isCharFinished = isChunkFinished || (isChunkActive && charIdx < charPtr);
-                            let className = '';
-                            if (isCharFinished) className = 'opacity-30';
-                            else if (isPreStart) className = 'opacity-0';
-                            return <span key={charIdx} className={className}>{toFullWidth(char)}</span>;
-                          })}
-                          {cIdx < line.chunks.length - 1 && '　'}
-                        </span>
-                      );
-                    })}
-                  </div>
+                  <LyricLineMemo
+                    key={line.absLineIdx}
+                    line={line}
+                    isLineActive={isLineActive}
+                    linePlayerColor={linePlayerColor}
+                    gl={globalLineIdx}
+                    gc={roomState?.globalChunkIdx ?? 0}
+                    p={roomState?.players?.[linePlayerId]}
+                    isPreStart={isPreStart}
+                    playerId={playerId}
+                    currentLineAbsIdx={currentLine?.absLineIdx}
+                    keygraphPtr={(keygraph as any)._seq_ptr_cur}
+                    judgeChunkKey={judgeChunkKey}
+                    judgeResult={judgeResult}
+                  />
                 );
               })}
             </div>

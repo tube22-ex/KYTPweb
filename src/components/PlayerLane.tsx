@@ -8,7 +8,7 @@ interface PlayerLaneProps {
   badShakePlayers?: Set<string>; // BAD判定シェイクするプレイヤーIDセット
 }
 
-export const PlayerLane: React.FC<PlayerLaneProps> = ({ taraiPlayers, badShakePlayers }) => {
+export const PlayerLane: React.FC<PlayerLaneProps> = React.memo(({ taraiPlayers, badShakePlayers }) => {
   const { roomState, playerId } = useMultiplayer();
   if (!roomState || !roomState.players) return null;
 
@@ -139,4 +139,4 @@ export const PlayerLane: React.FC<PlayerLaneProps> = ({ taraiPlayers, badShakePl
       </div>
     </div>
   );
-};
+});

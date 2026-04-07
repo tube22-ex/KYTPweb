@@ -81,6 +81,8 @@ function getTokenizer(): Promise<any> {
   return tokenizerPromise;
 }
 
+const splitYomiCache = new Map<string, string[]>();
+
 export async function splitYomi(
   _lyrics: string,
   word: string,
@@ -89,6 +91,11 @@ export async function splitYomi(
   protectedWords: string[] = [],
   separationWords: string[] = []
 ): Promise<string[]> {
+  const cacheKey = `${word}_${MIN}_${MAX}_${protectedWords.join(',')}_${separationWords.join(',')}`;
+  if (splitYomiCache.has(cacheKey)) {
+    return splitYomiCache.get(cacheKey)!;
+  }
+
   const katakanaToHiragana = (src: string) =>
     src.replace(/[\u30a1-\u30f6]/g, (m) => String.fromCharCode(m.charCodeAt(0) - 0x60));
 
@@ -309,6 +316,7 @@ export async function splitYomi(
       results.push(part);
     }
   }
+  splitYomiCache.set(cacheKey, results);
   return results;
 }
 
