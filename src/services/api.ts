@@ -7,6 +7,7 @@ import { getGlobalRebuildRules } from './globalConfig';
 // ============================================
 // Vite の開発サーバが .gz ファイルを自動解凍したり MIME タイプを誤判定したりするのを防ぐため、
 // 辞書ファイルに .bin 拡張子を付けてリクエストを書き換えます。
+//tes
 if (typeof window !== 'undefined' && (window as any).XMLHttpRequest) {
   const originalOpen = (window as any).XMLHttpRequest.prototype.open;
   (window as any).XMLHttpRequest.prototype.open = function (method: string, url: string, ...rest: any[]) {
@@ -166,7 +167,7 @@ export async function splitYomi(
       for (const t of tokens) {
         let text = t.surface_form;
         let innerOffset = 0;
-        
+
         while (text.length > 0) {
           let splitAt = -1;
           for (let jj = 0; jj < text.length - 1; jj++) {
@@ -189,12 +190,12 @@ export async function splitYomi(
             const isNonIndep = posData1 === '非自立';
             const isSuffix = posData1 === '接尾';
             const isSmallChar = SMALL_CHARS.test(text);
-            
+
             // 文法的・あるいは指定により分割可能か
             const isNaturalSplit = !isFuzoku && !isNonIndep && !isSuffix && !isSmallChar;
             const mustSplit = mandatorySplit.has(absoluteEndIdx);
             const canSplit = !forbiddenSplit.has(absoluteEndIdx);
-            
+
             atomicChunks.push({
               text,
               mustSplitAfter: mustSplit,
@@ -268,12 +269,12 @@ export async function splitYomi(
           const mustSplit = mandatorySplit.has(endIdx);
           const canSplit = !forbiddenSplit.has(endIdx);
           if (!mustSplit && (g.length < MIN || !canSplit)) {
-            if (i + 1 < inputGroups.length) { 
-              g += inputGroups[i + 1]; 
-              offset += g.length; i += 2; 
-            } else if (next.length > 0) { 
-              next[next.length - 1] += g; 
-              offset += g.length; i++; continue; 
+            if (i + 1 < inputGroups.length) {
+              g += inputGroups[i + 1];
+              offset += g.length; i += 2;
+            } else if (next.length > 0) {
+              next[next.length - 1] += g;
+              offset += g.length; i++; continue;
             } else { offset += g.length; i++; }
           } else { offset += g.length; i++; }
           next.push(g);
@@ -292,9 +293,9 @@ export async function splitYomi(
           let j = splitLen;
           while (j > 1 && (SMALL_CHARS.test(temp[j]) || forbiddenSplit.has(currentOffset + j - 1))) j--;
           if (j <= 1) {
-             j = splitLen;
-             while (j < temp.length && (SMALL_CHARS.test(temp[j]) || forbiddenSplit.has(currentOffset + j - 1))) j++;
-             if (j >= temp.length) break;
+            j = splitLen;
+            while (j < temp.length && (SMALL_CHARS.test(temp[j]) || forbiddenSplit.has(currentOffset + j - 1))) j++;
+            if (j >= temp.length) break;
           }
           parts.push(temp.slice(0, j));
           temp = temp.slice(j);
@@ -328,7 +329,7 @@ export function toChunks(jsonLines: ParsedLine[]): Chunk[] {
   jsonLines.forEach((line, lineIdx) => {
     if (!line.rawWord.trim() || line.isEnd) return;
     const t = Math.round(line.timeMs);
-    
+
     // もし前の行と全く同じ時間（YouTubeの複数行キャプション等）なら、同じ元歌詞の続きとみなす
     const isNewOriginalLyric = prevTimeMs === -1 || prevTimeMs !== t;
     prevTimeMs = t;
@@ -338,7 +339,7 @@ export function toChunks(jsonLines: ParsedLine[]): Chunk[] {
       .forEach((text, idx) => {
         result.push({
           text,
-          timeMs: t, 
+          timeMs: t,
           isLineHead: idx === 0 && isNewOriginalLyric,
           absLineIdx: lineIdx
         });
